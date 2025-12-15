@@ -9,7 +9,7 @@
 #ifndef INC_MANIPULATOR_H_
 #define INC_MANIPULATOR_H_
 
-#include "stm32f4xx_hal.h"
+#include "tim.h"
 #include "ring_buffer.h"
 #include "encoder.h"
 #include <math.h>

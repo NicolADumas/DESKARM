@@ -5,7 +5,7 @@
  *      Author: santal
  */
 
- #include "stm32f4xx_hal.h"
+#include "tim.h"
 
 #ifndef INC_ENCODER_H_
 #define INC_ENCODER_H_
