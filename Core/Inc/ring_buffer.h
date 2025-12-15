@@ -3,7 +3,7 @@
 #ifndef RB_DEF
 #define RB_DEF
 
-#define RBUF_SZ 100 // PRIMA ERA 10
+#define RBUF_SZ 50 // PRIMA ERA 10
 
 typedef uint8_t rberror_t; // to show errors
 typedef float rbelement_t; // element of the buffer
@@ -31,6 +31,8 @@ rberror_t rbpop(ringbuffer_t *buffer, rbelement_t *data);
 rberror_t rbpeek(ringbuffer_t *buffer, rbelement_t *data);
 rberror_t rblast(ringbuffer_t *buffer, rbelement_t *data);
 rberror_t rbget(ringbuffer_t *buffer, int8_t i, rbelement_t *element);
+rberror_t rbgetoffset(ringbuffer_t *buffer, uint8_t offset, rbelement_t *data);
 void rbclear(ringbuffer_t *buffer);
+
 
 #endif

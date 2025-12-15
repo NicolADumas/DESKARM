@@ -1,4 +1,5 @@
 #include<stdint.h>
+#include <stddef.h> 
 #include "ring_buffer.h"
 
 /*
@@ -107,6 +108,16 @@ rberror_t rbget(ringbuffer_t *buffer, int8_t i, rbelement_t *data){
     return 1;
 }
 
+rberror_t rbgetoffset(ringbuffer_t *buffer, uint8_t offset, rbelement_t *data) {
+    if (offset >= buffer->length) {
+        return 0;
+    }
+    
+    uint8_t index = (buffer->tail - 1 - offset + RBUF_SZ) % RBUF_SZ;
+    *data = buffer->buffer[index];
+    return 1;
+}
+
 /*
 #@
 @name: rbclear
@@ -126,3 +137,5 @@ void rbclear(ringbuffer_t *buffer){
     buffer->head = 0;
     buffer->tail = 0;
 }
+
+

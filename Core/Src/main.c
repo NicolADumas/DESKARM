@@ -104,9 +104,11 @@ int main(void)
 
   encoder_init(&htim3, &enc1);
   encoder_init(&htim4, &enc2);
-  manipulator_init(&manipulator, &enc1, &enc2, &htim10);
+  manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10);
   manipulator_start(&manipulator);
   HAL_TIM_Base_Start_IT(&htim10);
+  float velocity_input[2] = {0, 0.5};
+  apply_velocity_input(&manipulator, velocity_input);
   /* USER CODE END 2 */
 
   /* Infinite loop */

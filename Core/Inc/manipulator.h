@@ -13,10 +13,26 @@
 #include "ring_buffer.h"
 #include "encoder.h"
 #include <math.h>
+#include "utils.h"
+
+#define NUM_POINTS_FOR_VEL 50
+#define NUM_POINTS_FOR_ACC 20
+/* RESOLUTION OF THE STEPPER MOTOR (in rads) */
+#define RESOLUTION 0.0314159 // 2*PI/200
+/* REDUCTION OF THE MOTOR 1*/
+#define REDUCTION_1 10.0f
+/* REDUCTION OF THE MOTOR 2*/
+#define REDUCTION_2 5.0f
+/* MICROSTEPS MOTOR 1*/
+#define MICROSTEPS_1 4
+/* MICROSTEPS MOTOR 2*/
+#define MICROSTEPS_2 4
 
 typedef struct {
     encoder_t encoder_1;
     encoder_t encoder_2;
+    TIM_HandleTypeDef motor_1;
+    TIM_HandleTypeDef motor_2;
     float current_position; // wrt end-effector
     float current_velocity; // wrt end-effector
     float dt;
@@ -35,9 +51,13 @@ typedef struct {
 void manipulator_init(manipulator_t *manipulator,
                       encoder_t *encoder_1,
                       encoder_t *encoder_2,
+                      TIM_HandleTypeDef *motor1,
+                      TIM_HandleTypeDef *motor2,
                       TIM_HandleTypeDef *htim);
+
 void manipulator_start(manipulator_t *manipulator);
 void manipulator_read_status(manipulator_t *manipulator);
+void apply_velocity_input(manipulator_t *manipulator, float *u);
 
 
 #endif 
