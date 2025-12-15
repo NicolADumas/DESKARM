@@ -24,3 +24,9 @@ void encoder_read(encoder_t *encoder, float *degs, int8_t *dir) {
     *degs = (float)counter / (float)(encoder->htim_encoder->Instance->ARR) * 360.0f;
     *dir = (__HAL_TIM_DIRECTION_STATUS(encoder->htim_encoder) * 2 - 1);
 }
+
+void encoder_set_count(encoder_t *encoder, uint32_t count){
+    HAL_TIM_Encoder_Stop(encoder->htim_encoder, TIM_CHANNEL_ALL);
+    encoder->htim_encoder->Instance->CNT = count;
+    HAL_TIM_Encoder_Start(encoder->htim_encoder, TIM_CHANNEL_ALL);
+}

@@ -28,6 +28,13 @@
 /* MICROSTEPS MOTOR 2*/
 #define MICROSTEPS_2 4
 
+/* CALIBRATION MOTOR 1*/ 
+#define CALIBRATION_1 6549 // CNT value at calibration position
+
+/* CALIBRATION MOTOR 2*/
+#define CALIBRATION_2 2595 // CNT value at calibration position
+
+
 typedef struct {
     encoder_t encoder_1;
     encoder_t encoder_2;
@@ -43,8 +50,10 @@ typedef struct {
     ringbuffer_t dq1;
     ringbuffer_t ddq0;
     ringbuffer_t ddq1;
-    
+
+    uint8_t calibration_triggered;
 } manipulator_t;
+
 
 // This function should init and start the encoders
 // REMOVE THIS FUNCTIONS FROM main.c, IT SHOULD ONLY CALL manipulator_init 
@@ -58,6 +67,12 @@ void manipulator_init(manipulator_t *manipulator,
 void manipulator_start(manipulator_t *manipulator);
 void manipulator_read_status(manipulator_t *manipulator);
 void apply_velocity_input(manipulator_t *manipulator, float *u);
+
+void clear_manipulator_buffers(manipulator_t *manipulator);
+void calibration_start(manipulator_t *manipulator);
+void calibration_stop(manipulator_t *manipulator);
+uint8_t calibration_check(manipulator_t *manipulator);
+void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value);
 
 
 #endif 

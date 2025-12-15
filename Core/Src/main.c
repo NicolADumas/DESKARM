@@ -107,8 +107,7 @@ int main(void)
   manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10);
   manipulator_start(&manipulator);
   HAL_TIM_Base_Start_IT(&htim10);
-  float velocity_input[2] = {0, 0.5};
-  apply_velocity_input(&manipulator, velocity_input);
+  calibration_start(&manipulator);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -116,6 +115,9 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+    if(calibration_check(&manipulator)){
+      continue;
+    }
 
     /* USER CODE BEGIN 3 */
   }
@@ -177,6 +179,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
     manipulator_read_status(&manipulator);
 	}
 }
+
+
+HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+    if(GPIO_Pin==LIMIT_SWITCH_1_Pin){
+        if(calibration_check(&manipulator)){
+          calibration_encoder(&manipulator, &manipulator.encoder_1, CALIBRATION_1);
+          apply_velocity_input(&manipulator, (float[2]){0.0, 0.5});
+        }
+        
+    }
+
+    if (GPIO_Pin==LIMIT_SWITCH_2_Pin){
+        if(calibration_check(&manipulator)){
+          calibration_encoder(&manipulator, &manipulator.encoder_2, CALIBRATION_2);
+          calibration_stop(&manipulator);
+        }
+    }
+}
+
 /* USER CODE END 4 */
 
 /**
@@ -209,3 +230,6 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
+
+
+

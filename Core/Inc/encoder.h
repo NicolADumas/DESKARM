@@ -24,5 +24,6 @@ typedef struct {
 void encoder_init(TIM_HandleTypeDef *htim_encoder, encoder_t *encoder);
 void encoder_start(encoder_t *encoder);
 void encoder_read(encoder_t *encoder, float *degs, int8_t *dir);
+void encoder_set_count(encoder_t *encoder, uint32_t count);
 
 #endif /* INC_ENCODER_H_ */

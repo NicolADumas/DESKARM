@@ -14,12 +14,8 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     manipulator->motor_1 = *motor1;
     manipulator->motor_2 = *motor2;
 
-    rbclear(&manipulator->q0);
-    rbclear(&manipulator->q1);
-    rbclear(&manipulator->dq0);
-    rbclear(&manipulator->dq1);
-    rbclear(&manipulator->ddq0);
-    rbclear(&manipulator->ddq1);
+    clear_manipulator_buffers(manipulator);
+    manipulator->calibration_triggered = 0;
 
     // calculate period with arr e psc and pclk1 frequency
     uint32_t pclk1_freq = HAL_RCC_GetPCLK1Freq();
@@ -27,6 +23,15 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     uint32_t arr = htim->Instance->ARR;
     uint32_t psc = htim->Instance->PSC;
     manipulator->dt = (float)(arr + 1) * (float)(psc + 1) / (float)timer_clock;
+}
+
+void clear_manipulator_buffers(manipulator_t *manipulator){
+    rbclear(&manipulator->q0);
+    rbclear(&manipulator->q1);
+    rbclear(&manipulator->dq0);
+    rbclear(&manipulator->dq1);
+    rbclear(&manipulator->ddq0);
+    rbclear(&manipulator->ddq1);
 }
 
 void manipulator_start(manipulator_t *manipulator){
@@ -108,3 +113,26 @@ void apply_velocity_input(manipulator_t *manipulator, float *u){
     manipulator->motor_2.Instance->EGR = TIM_EGR_UG;
     return;
 }
+
+
+void calibration_start(manipulator_t *manipulator){
+    manipulator->calibration_triggered = 1;
+    apply_velocity_input(manipulator, (float[2]){-0.5, 0.0});
+}
+
+void calibration_stop(manipulator_t *manipulator){
+    manipulator->calibration_triggered = 0;
+    clear_manipulator_buffers(manipulator);
+    apply_velocity_input(manipulator, (float[2]){0, 0});
+}
+
+uint8_t calibration_check(manipulator_t *manipulator){
+    return manipulator->calibration_triggered;
+}
+
+void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value){
+    apply_velocity_input(manipulator, (float[2]){0.0, 0.0});
+    encoder_set_count(encoder, calibration_value);
+}
+
+
