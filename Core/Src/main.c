@@ -107,7 +107,9 @@ int main(void)
   manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10);
   manipulator_start(&manipulator);
   HAL_TIM_Base_Start_IT(&htim10);
+  apply_velocity_input(&manipulator, (float[2]){0.0, 0.01});
   calibration_start(&manipulator);
+  uint32_t tick=0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -118,6 +120,16 @@ int main(void)
     if(calibration_check(&manipulator)){
       continue;
     }
+
+      if (HAL_GetTick() - tick > 10) { // Esegui il controllo ogni 10 ms
+      tick = HAL_GetTick();
+
+      // 1. Leggi lo stato attuale dei sensori (posizione, velocità, ecc.)
+      manipulator_read_status(&manipulator);
+
+      // 2. Esegui il ciclo di controllo PID per calcolare e applicare la velocità
+      manipulator_update_position_controller(&manipulator, 0, 0);
+  }
 
     /* USER CODE BEGIN 3 */
   }

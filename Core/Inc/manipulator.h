@@ -14,6 +14,7 @@
 #include "encoder.h"
 #include <math.h>
 #include "utils.h"
+#include "pid.h"
 
 #define NUM_POINTS_FOR_VEL 50
 #define NUM_POINTS_FOR_ACC 20
@@ -32,7 +33,7 @@
 #define CALIBRATION_1 6549 // CNT value at calibration position
 
 /* CALIBRATION MOTOR 2*/
-#define CALIBRATION_2 2595 // CNT value at calibration position
+#define CALIBRATION_2 2464 // CNT value at calibration position
 
 
 typedef struct {
@@ -51,8 +52,13 @@ typedef struct {
     ringbuffer_t ddq0;
     ringbuffer_t ddq1;
 
+    pid_controller_t position_controller_1;
+    pid_controller_t position_controller_2;
+
     uint8_t calibration_triggered;
 } manipulator_t;
+
+
 
 
 // This function should init and start the encoders
@@ -73,6 +79,7 @@ void calibration_start(manipulator_t *manipulator);
 void calibration_stop(manipulator_t *manipulator);
 uint8_t calibration_check(manipulator_t *manipulator);
 void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value);
+void manipulator_update_position_controller(manipulator_t *manipulator, float target_q0_rad, float target_q1_rad);
 
 
 #endif 
