@@ -19,15 +19,15 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     manipulator->calibration_triggered = 0;
 
     pid_controller_t pc1, pc2;
-    pc1.Kp = 4.5f;
-    pc1.Ki = 0.5f;
-    pc1.Kd = 0.0f;
+    pc1.Kp = 3.7f;
+    pc1.Ki = 0.01f;
+    pc1.Kd = 0.3f;
     pc1.previous_error = 0.0f;
     pc1.integral_error = 0.0f;
 
-    pc2.Kp = 4.5f;
-    pc2.Ki = 0.5f;
-    pc2.Kd = 0.0f;
+    pc2.Kp = 4.7f;
+    pc2.Ki = 0.01f;
+    pc2.Kd = 0.3f;
     pc2.previous_error = 0.0f;
     pc2.integral_error = 0.0f;
 
@@ -102,37 +102,66 @@ void manipulator_read_status(manipulator_t *manipulator){
 
 
 void apply_velocity_input(manipulator_t *manipulator, float *u){
-    int8_t dir1, dir2;
-    uint32_t f;
-    uint32_t ARR, CCR;
-    uint32_t prescaler1, prescaler2;
+    // --- IMPOSTAZIONI COMUNI ---
+    const uint32_t TIMER_INPUT_FREQ = HAL_RCC_GetPCLK1Freq() * 2;
+    const uint32_t PRESCALER = 99;
+    const uint32_t TIMER_COUNT_FREQ = TIMER_INPUT_FREQ / (PRESCALER + 1); // Should be 1,000,000 Hz
 
-    dir1 = u[0] < 0 ?  GPIO_PIN_SET : GPIO_PIN_RESET;
-    HAL_GPIO_WritePin(DIR_1_GPIO_Port, DIR_1_Pin, dir1);
+    // --- MOTORE 1 ---
+    HAL_GPIO_WritePin(DIR_1_GPIO_Port, DIR_1_Pin, (u[0] < 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
-    dir2 = u[1] > 0 ?  GPIO_PIN_SET : GPIO_PIN_RESET; /* the second motor is upside-down */
+    float abs_speed_1 = fabsf(u[0]);
+    uint32_t arr1;
 
-    HAL_GPIO_WritePin(DIR_2_GPIO_Port, DIR_2_Pin, dir2);
+    if (abs_speed_1 < 0.001f) {
+        arr1 = 0; // Ferma il motore
+    } else {
+        // Calcola la velocità del motore (non dell'output)
+        float motor_speed_rad_s_1 = abs_speed_1 * REDUCTION_1;
 
+        // Converte la velocità del motore in frequenza di impulsi (Hz)
+        float step_freq_1 = motor_speed_rad_s_1 * (STEPS_PER_REVOLUTION / TWO_PI) * MICROSTEPS_1;
 
-	prescaler1 = (uint16_t)  5200; // 8400;//12000 ;//8400;
-	f = HAL_RCC_GetPCLK1Freq()*2;
-	ARR = (uint32_t)(fabsf(u[0]) < 0.0001 ? 0:(uint32_t)  (RESOLUTION*f/(fabsf(u[0])*REDUCTION_1*MICROSTEPS_1*prescaler1)));
-	CCR = ARR /2;
-    __HAL_TIM_SET_PRESCALER(&manipulator->motor_1, prescaler1); //2625
-    __HAL_TIM_SET_AUTORELOAD(&manipulator->motor_1, ARR);
-    __HAL_TIM_SET_COMPARE(&manipulator->motor_1, TIM_CHANNEL_1, CCR);
+        // Calcola ARR per ottenere quella frequenza
+        if (step_freq_1 > 0) {
+            arr1 = (uint32_t)(TIMER_COUNT_FREQ / step_freq_1);
+            // Se ARR è troppo piccolo, la frequenza è troppo alta per essere generata
+            if (arr1 < 10) arr1 = 10; 
+        } else {
+            arr1 = 0;
+        }
+    }
+
+    __HAL_TIM_SET_PRESCALER(&manipulator->motor_1, PRESCALER);
+    __HAL_TIM_SET_AUTORELOAD(&manipulator->motor_1, arr1);
+    __HAL_TIM_SET_COMPARE(&manipulator->motor_1, TIM_CHANNEL_1, arr1 > 0 ? arr1 / 2 : 0); // Duty 50% o 0
     manipulator->motor_1.Instance->EGR = TIM_EGR_UG;
 
-   	prescaler2 = (uint16_t)  8400; //12000 ;//8400;
-    f = HAL_RCC_GetPCLK1Freq()*2;
-    ARR = (uint32_t)(fabsf(u[1]) < 0.0001 ? 0:(uint32_t)  (RESOLUTION*f/(fabsf(u[1])*REDUCTION_2*MICROSTEPS_2*prescaler2)));
-    CCR = ARR /2;
-   	__HAL_TIM_SET_PRESCALER(&manipulator->motor_2, prescaler2); //2625
-    __HAL_TIM_SET_AUTORELOAD(&manipulator->motor_2, ARR);
-    __HAL_TIM_SET_COMPARE(&manipulator->motor_2, TIM_CHANNEL_1, CCR);
+
+    // --- MOTORE 2 ---
+    HAL_GPIO_WritePin(DIR_2_GPIO_Port, DIR_2_Pin, (u[1] > 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+    float abs_speed_2 = fabsf(u[1]);
+    uint32_t arr2;
+
+    if (abs_speed_2 < 0.001f) {
+        arr2 = 0;
+    } else {
+        float motor_speed_rad_s_2 = abs_speed_2 * REDUCTION_2;
+        float step_freq_2 = motor_speed_rad_s_2 * (STEPS_PER_REVOLUTION / TWO_PI) * MICROSTEPS_2;
+        
+        if (step_freq_2 > 0) {
+            arr2 = (uint32_t)(TIMER_COUNT_FREQ / step_freq_2);
+            if (arr2 < 10) arr2 = 10;
+        } else {
+            arr2 = 0;
+        }
+    }
+
+    __HAL_TIM_SET_PRESCALER(&manipulator->motor_2, PRESCALER);
+    __HAL_TIM_SET_AUTORELOAD(&manipulator->motor_2, arr2);
+    __HAL_TIM_SET_COMPARE(&manipulator->motor_2, TIM_CHANNEL_1, arr2 > 0 ? arr2 / 2 : 0);
     manipulator->motor_2.Instance->EGR = TIM_EGR_UG;
-    return;
 }
 
 
