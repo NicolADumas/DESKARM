@@ -50,6 +50,8 @@
 manipulator_t manipulator;
 encoder_t enc1;
 encoder_t enc2;
+uint32_t tick=0;
+
 
 
 /* USER CODE END PV */
@@ -107,25 +109,44 @@ int main(void)
   manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10);
   manipulator_start(&manipulator);
   HAL_TIM_Base_Start_IT(&htim10);
-  apply_velocity_input(&manipulator, (float[2]){0.0, 0.05});
+
   calibration_start(&manipulator);
-  uint32_t tick=0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  static uint8_t homing_completed_first_time = 0;
   while (1)
   {
-    /* USER CODE END WHILE */
+
     if(calibration_check(&manipulator)){
       continue;
     }
 
-      if (HAL_GetTick() - tick > 10) { // Esegui il controllo ogni 10 ms
+	if(homing_check(&manipulator) == 0){ // If not homed, run homing
+		if((HAL_GetTick() - tick) > 10){
+			tick = HAL_GetTick();
+			homing(&manipulator);
+		}
+		continue;
+	}
+
+	// Homing is complete, reset PID controllers once
+	if (homing_completed_first_time == 0) {
+		homing_completed_first_time = 1;
+		manipulator_reset_pid_controllers(&manipulator); // Reset PID state!
+		tick = HAL_GetTick(); // Reset tick to start the control loop fresh
+	}
+
+
+    if((HAL_GetTick() - tick) > 10){
+      manipulator_set_setpoints(&manipulator, -3.14, 3.14); // Move to 180 degrees on both joints
       tick = HAL_GetTick();
-      // 2. Esegui il ciclo di controllo PID per calcolare e applicare la velocità
-      manipulator_update_position_controller(&manipulator, 3.14/2, 3.14/2);
-  }
+      manipulator_update_position_controller(&manipulator);
+    }
+
+
+    /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
@@ -195,7 +216,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
           calibration_encoder(&manipulator, &manipulator.encoder_1, CALIBRATION_1);
           apply_velocity_input(&manipulator, (float[2]){0.0, 0.5});
         }else{
-          apply_velocity_input(&manipulator, (float[2]){0.0, 0.0});
+          manipulator_set_motor_velocity(&manipulator, MOTOR_1, 0.0f);
         }
         
     }
@@ -205,7 +226,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
           calibration_encoder(&manipulator, &manipulator.encoder_2, CALIBRATION_2);
           calibration_stop(&manipulator);
         }else{
-
+          manipulator_set_motor_velocity(&manipulator, MOTOR_2, 0.0f);
         }
     }
 }

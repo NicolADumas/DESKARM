@@ -38,6 +38,20 @@
 #define STEPS_PER_REVOLUTION 200.0f
 #define TWO_PI 6.28318530718f
 
+#define RATE_HOMING_CONTROL_MS 10
+
+/* SOFTWARE ENDSTOPS */
+#define Q0_MIN_DEG -105.0f
+#define Q1_MAX_DEG 125.0f
+#define Q0_MIN_RAD (-1.83259571f) // -105.0f * PI / 180.0f
+#define Q1_MAX_RAD (2.18166156f)  //  125.0f * PI / 180.0f
+
+typedef enum {
+    MOTOR_1,
+    MOTOR_2
+} motor_id_t;
+
+
 
 typedef struct {
     encoder_t encoder_1;
@@ -58,7 +72,11 @@ typedef struct {
     pid_controller_t position_controller_1;
     pid_controller_t position_controller_2;
 
+    float q0_setpoint;
+    float q1_setpoint;
+
     uint8_t calibration_triggered;
+    uint8_t homed;
 } manipulator_t;
 
 
@@ -76,13 +94,20 @@ void manipulator_init(manipulator_t *manipulator,
 void manipulator_start(manipulator_t *manipulator);
 void manipulator_read_status(manipulator_t *manipulator);
 void apply_velocity_input(manipulator_t *manipulator, float *u);
+void manipulator_set_motor_velocity(manipulator_t *manipulator, motor_id_t motor, float speed_rad_s);
 
 void clear_manipulator_buffers(manipulator_t *manipulator);
 void calibration_start(manipulator_t *manipulator);
 void calibration_stop(manipulator_t *manipulator);
 uint8_t calibration_check(manipulator_t *manipulator);
 void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value);
-void manipulator_update_position_controller(manipulator_t *manipulator, float target_q0_rad, float target_q1_rad);
+void manipulator_update_position_controller(manipulator_t *manipulator);
+void manipulator_reset_pid_controllers(manipulator_t *manipulator);
+void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad, float q1_setpoint_rad);
 
+
+void homing(manipulator_t *manipulator);
+uint8_t homing_check(manipulator_t *manipulator);
+uint8_t manipulator_error_check(manipulator_t *manipulator, float error_threshold1, float error_threshold2);
 
 #endif 

@@ -17,6 +17,7 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
 
     clear_manipulator_buffers(manipulator);
     manipulator->calibration_triggered = 0;
+    manipulator->homed = 0;
 
     pid_controller_t pc1, pc2;
     pc1.Kp = 3.7f;
@@ -101,67 +102,71 @@ void manipulator_read_status(manipulator_t *manipulator){
 
 
 
-void apply_velocity_input(manipulator_t *manipulator, float *u){
+void manipulator_set_motor_velocity(manipulator_t *manipulator, motor_id_t motor, float speed_rad_s) {
     // --- IMPOSTAZIONI COMUNI ---
     const uint32_t TIMER_INPUT_FREQ = HAL_RCC_GetPCLK1Freq() * 2;
     const uint32_t PRESCALER = 99;
     const uint32_t TIMER_COUNT_FREQ = TIMER_INPUT_FREQ / (PRESCALER + 1); // Should be 1,000,000 Hz
 
-    // --- MOTORE 1 ---
-    HAL_GPIO_WritePin(DIR_1_GPIO_Port, DIR_1_Pin, (u[0] < 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    TIM_HandleTypeDef *motor_timer;
+    GPIO_TypeDef* dir_port;
+    uint16_t dir_pin;
+    float reduction;
+    float microsteps;
+    uint8_t dir_inverted;
 
-    float abs_speed_1 = fabsf(u[0]);
-    uint32_t arr1;
+    if (motor == MOTOR_1) {
+        motor_timer = &manipulator->motor_1;
+        dir_port = DIR_1_GPIO_Port;
+        dir_pin = DIR_1_Pin;
+        reduction = REDUCTION_1;
+        microsteps = MICROSTEPS_1;
+        dir_inverted = 0;
+    } else { // MOTOR_2
+        motor_timer = &manipulator->motor_2;
+        dir_port = DIR_2_GPIO_Port;
+        dir_pin = DIR_2_Pin;
+        reduction = REDUCTION_2;
+        microsteps = MICROSTEPS_2;
+        dir_inverted = 1;
+    }
 
-    if (abs_speed_1 < 0.001f) {
-        arr1 = 0; // Ferma il motore
+    // --- IMPOSTA DIREZIONE ---
+    GPIO_PinState dir_state = (speed_rad_s < 0) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    if (dir_inverted) {
+        dir_state = (dir_state == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
+    }
+    HAL_GPIO_WritePin(dir_port, dir_pin, dir_state);
+
+    // --- CALCOLA FREQUENZA E ARR ---
+    float abs_speed = fabsf(speed_rad_s);
+    uint32_t arr;
+
+    if (abs_speed < 0.001f) {
+        arr = 0; // Ferma il motore
     } else {
-        // Calcola la velocità del motore (non dell'output)
-        float motor_speed_rad_s_1 = abs_speed_1 * REDUCTION_1;
+        float motor_speed_rad_s = abs_speed * reduction;
+        float step_freq = motor_speed_rad_s * (STEPS_PER_REVOLUTION / TWO_PI) * microsteps;
 
-        // Converte la velocità del motore in frequenza di impulsi (Hz)
-        float step_freq_1 = motor_speed_rad_s_1 * (STEPS_PER_REVOLUTION / TWO_PI) * MICROSTEPS_1;
-
-        // Calcola ARR per ottenere quella frequenza
-        if (step_freq_1 > 0) {
-            arr1 = (uint32_t)(TIMER_COUNT_FREQ / step_freq_1);
-            // Se ARR è troppo piccolo, la frequenza è troppo alta per essere generata
-            if (arr1 < 10) arr1 = 10; 
+        if (step_freq > 0) {
+            arr = (uint32_t)(TIMER_COUNT_FREQ / step_freq);
+            if (arr < 10) arr = 10; // Limite per evitare frequenze troppo alte
         } else {
-            arr1 = 0;
+            arr = 0;
         }
     }
 
-    __HAL_TIM_SET_PRESCALER(&manipulator->motor_1, PRESCALER);
-    __HAL_TIM_SET_AUTORELOAD(&manipulator->motor_1, arr1);
-    __HAL_TIM_SET_COMPARE(&manipulator->motor_1, TIM_CHANNEL_1, arr1 > 0 ? arr1 / 2 : 0); // Duty 50% o 0
-    manipulator->motor_1.Instance->EGR = TIM_EGR_UG;
+    // --- APPLICA VALORI AL TIMER ---
+    __HAL_TIM_SET_PRESCALER(motor_timer, PRESCALER);
+    __HAL_TIM_SET_AUTORELOAD(motor_timer, arr);
+    __HAL_TIM_SET_COMPARE(motor_timer, TIM_CHANNEL_1, arr > 0 ? arr / 2 : 0); // Duty 50% o 0
+    motor_timer->Instance->EGR = TIM_EGR_UG;
+}
 
 
-    // --- MOTORE 2 ---
-    HAL_GPIO_WritePin(DIR_2_GPIO_Port, DIR_2_Pin, (u[1] > 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-
-    float abs_speed_2 = fabsf(u[1]);
-    uint32_t arr2;
-
-    if (abs_speed_2 < 0.001f) {
-        arr2 = 0;
-    } else {
-        float motor_speed_rad_s_2 = abs_speed_2 * REDUCTION_2;
-        float step_freq_2 = motor_speed_rad_s_2 * (STEPS_PER_REVOLUTION / TWO_PI) * MICROSTEPS_2;
-        
-        if (step_freq_2 > 0) {
-            arr2 = (uint32_t)(TIMER_COUNT_FREQ / step_freq_2);
-            if (arr2 < 10) arr2 = 10;
-        } else {
-            arr2 = 0;
-        }
-    }
-
-    __HAL_TIM_SET_PRESCALER(&manipulator->motor_2, PRESCALER);
-    __HAL_TIM_SET_AUTORELOAD(&manipulator->motor_2, arr2);
-    __HAL_TIM_SET_COMPARE(&manipulator->motor_2, TIM_CHANNEL_1, arr2 > 0 ? arr2 / 2 : 0);
-    manipulator->motor_2.Instance->EGR = TIM_EGR_UG;
+void apply_velocity_input(manipulator_t *manipulator, float *u){
+    manipulator_set_motor_velocity(manipulator, MOTOR_1, u[0]);
+    manipulator_set_motor_velocity(manipulator, MOTOR_2, u[1]);
 }
 
 
@@ -174,6 +179,7 @@ void calibration_stop(manipulator_t *manipulator){
     manipulator->calibration_triggered = 0;
     clear_manipulator_buffers(manipulator);
     apply_velocity_input(manipulator, (float[2]){0, 0});
+    manipulator_set_setpoints(manipulator, 0.0f, 0.0f);
 }
 
 uint8_t calibration_check(manipulator_t *manipulator){
@@ -185,11 +191,57 @@ void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_
     encoder_set_count(encoder, calibration_value);
 }
 
+uint8_t homing_check(manipulator_t *manipulator){
+    return manipulator->homed;
+}
+
+void homing(manipulator_t *manipulator){
+    static float last_error0, last_error1;
+    static uint16_t counter = 0;
+
+    manipulator_update_position_controller(manipulator);
+    float current_q0, current_q1;
+    rbpeek(&manipulator->q0, &current_q0);
+    rbpeek(&manipulator->q1, &current_q1);
+
+    float error_q0 = fabsf(manipulator->q0_setpoint - current_q0);
+    float error_q1 = fabsf(manipulator->q1_setpoint - current_q1);
+
+    if(error_q0 - last_error0 ==0 && error_q1 - last_error1 ==0 && error_q0 < 0.2f && error_q1 < 0.2f){
+        counter++;
+    }
+
+    last_error0 = error_q0;
+    last_error1 = error_q1;
+
+    if(counter >= 10){ // 10 cycles of 10ms = 100ms stable
+        manipulator->homed = 1;
+        apply_velocity_input(manipulator, (float[2]){0.0, 0.0});
+    }
+    
+}
+
+
+uint8_t manipulator_error_check(manipulator_t *manipulator, float error_threshold1, float error_threshold2){
+    float current_q0, current_q1;
+    rbpeek(&manipulator->q0, &current_q0);
+    rbpeek(&manipulator->q1, &current_q1);
+
+    float error_q0 = fabsf(manipulator->q0_setpoint - current_q0);
+    float error_q1 = fabsf(manipulator->q1_setpoint - current_q1);
+
+    return (error_q0 < error_threshold1) && (error_q1 < error_threshold2);
+}
+
+void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad, float q1_setpoint_rad){
+    manipulator->q0_setpoint = q0_setpoint_rad;
+    manipulator->q1_setpoint = q1_setpoint_rad;
+}
 
 
 
 
-void manipulator_update_position_controller(manipulator_t *manipulator, float target_q0_rad, float target_q1_rad) {
+void manipulator_update_position_controller(manipulator_t *manipulator) {
     // Limiti per l'anti-windup dell'integrale e per la velocità massima
     const float INTEGRAL_MAX = 10.0f;
     const float VELOCITY_MAX = 2.0f; // rad/s
@@ -199,7 +251,7 @@ void manipulator_update_position_controller(manipulator_t *manipulator, float ta
     float current_q0;
     rbpeek(&manipulator->q0, &current_q0); // Legge la posizione più recente senza rimuoverla
 
-    float error_q0 = target_q0_rad - current_q0;
+    float error_q0 = manipulator->q0_setpoint - current_q0;
 
     // Termine Proporzionale
     float p_term_q0 = manipulator->position_controller_1.Kp * error_q0;
@@ -222,7 +274,7 @@ void manipulator_update_position_controller(manipulator_t *manipulator, float ta
     float current_q1;
     rbpeek(&manipulator->q1, &current_q1);
 
-    float error_q1 = target_q1_rad - current_q1;
+    float error_q1 = manipulator->q1_setpoint - current_q1;
     float p_term_q1 = manipulator->position_controller_2.Kp * error_q1;
     manipulator->position_controller_2.integral_error += error_q1 * DT;
     if (manipulator->position_controller_2.integral_error > INTEGRAL_MAX) manipulator->position_controller_2.integral_error = INTEGRAL_MAX;
@@ -231,20 +283,39 @@ void manipulator_update_position_controller(manipulator_t *manipulator, float ta
     float derivative_error_q1 = (error_q1 - manipulator->position_controller_2.previous_error) / DT;
     float d_term_q1 = manipulator->position_controller_2.Kd * derivative_error_q1;
     manipulator->position_controller_2.previous_error = error_q1;
-    float u1 = p_term_q1 + i_term_q1 + d_term_q1;
 
-    // Saturazione della velocità di comando
-    if (u0 > VELOCITY_MAX) u0 = VELOCITY_MAX;
-    if (u0 < -VELOCITY_MAX) u0 = -VELOCITY_MAX;
+    // Calcolo uscita di controllo (velocità desiderata)
+    float u1 = p_term_q0 + i_term_q0 + d_term_q0;
+    float u2 = p_term_q1 + i_term_q1 + d_term_q1;
+
+    // --- SOFTWARE ENDSTOPS ---
+	// Check limit for motor 1 (q0)
+	if ((current_q0 <= Q0_MIN_RAD && u1 < 0.0f)) {
+		u1 = 0.0f;
+	}
+
+	// Check limit for motor 2 (q1)
+	if ((current_q1 >= Q1_MAX_RAD && u2 > 0.0f)) {
+		u2 = 0.0f;
+	}
+
+    // Saturazione della velocità (clamping)
     if (u1 > VELOCITY_MAX) u1 = VELOCITY_MAX;
     if (u1 < -VELOCITY_MAX) u1 = -VELOCITY_MAX;
+    if (u2 > VELOCITY_MAX) u2 = VELOCITY_MAX;
+    if (u2 < -VELOCITY_MAX) u2 = -VELOCITY_MAX;
+
+    global_v_calc1 = u1;
+    global_v_calc2 = u2;
+    
 
     // Applica le velocità calcolate ai motori
+    apply_velocity_input(manipulator, (float[]){u1, u2});
+}
 
-    global_v_calc1 = u0;
-    global_v_calc2 = u1;
-
-
-    float u[2] = {u0, u1};
-    apply_velocity_input(manipulator, u);
+void manipulator_reset_pid_controllers(manipulator_t *manipulator) {
+    manipulator->position_controller_1.integral_error = 0.0f;
+    manipulator->position_controller_1.previous_error = 0.0f;
+    manipulator->position_controller_2.integral_error = 0.0f;
+    manipulator->position_controller_2.previous_error = 0.0f;
 }
