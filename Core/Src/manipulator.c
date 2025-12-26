@@ -320,7 +320,7 @@ void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) 
     const float Kd0 = 17.0f;  // Guadagno derivativo
 
     const float Kp1 = 125.0f; // Guadagno proporzionale
-    const float Ki1 = 0.0f;  // Guadagno integrale
+    const float Ki1 = 150.0f;  // Guadagno integrale
     const float Kd1 = 14.5f;  // Guadagno derivativo
 
     // Limiti
@@ -378,6 +378,9 @@ void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) 
     if (u2 > VELOCITY_MAX) u2 = VELOCITY_MAX;
     if (u2 < -VELOCITY_MAX) u2 = -VELOCITY_MAX;
 
+    global_v_calc1 = u1;
+    global_v_calc2 = u2;
+
     // Applica le velocità calcolate ai motori
     apply_velocity_input(manipulator, (float[]){u1, u2});
 }
@@ -387,6 +390,8 @@ void manipulator_reset_pid_controllers(manipulator_t *manipulator) {
     manipulator->position_controller_1.previous_error = 0.0f;
     manipulator->position_controller_2.integral_error = 0.0f;
     manipulator->position_controller_2.previous_error = 0.0f;
+    manipulator->integral_error_q0 = 0.0f;
+    manipulator->integral_error_q1 = 0.0f;
 }
 
 void manipulator_calc_B(manipulator_t *manipulator){
