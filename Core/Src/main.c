@@ -140,9 +140,9 @@ int main(void)
 
 
     if((HAL_GetTick() - tick) > 10){
-      manipulator_set_setpoints(&manipulator, -3.14, 3.14); // Move to 180 degrees on both joints
+      manipulator_set_setpoints(&manipulator, 0.785, 0.785);
       tick = HAL_GetTick();
-      manipulator_update_position_controller(&manipulator);
+      manipulator_update_inverse_dynamics_controller(&manipulator);
     }
 
 

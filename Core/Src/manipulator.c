@@ -41,7 +41,7 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     uint32_t timer_clock = pclk1_freq * 2; // TIMxCLK
     uint32_t arr = htim->Instance->ARR;
     uint32_t psc = htim->Instance->PSC;
-    manipulator->dt = (float)(arr + 1) * (float)(psc + 1) / (float)timer_clock;
+    manipulator->sensor_dt = (float)(arr + 1) * (float)(psc + 1) / (float)timer_clock;
 }
 
 void clear_manipulator_buffers(manipulator_t *manipulator){
@@ -81,8 +81,8 @@ void manipulator_read_status(manipulator_t *manipulator){
     rbpush(&manipulator->q0, q0);
     rbpush(&manipulator->q1, q1);
 
-    float dq0 = calculate_slope(&manipulator->q0, NUM_POINTS_FOR_VEL, manipulator->dt);
-    float dq1 = calculate_slope(&manipulator->q1, NUM_POINTS_FOR_VEL, manipulator->dt);
+    float dq0 = calculate_slope(&manipulator->q0, NUM_POINTS_FOR_VEL, manipulator->sensor_dt);
+    float dq1 = calculate_slope(&manipulator->q1, NUM_POINTS_FOR_VEL, manipulator->sensor_dt);
 
     global_dq0 = dq0;
     global_dq1 = dq1;
@@ -90,8 +90,8 @@ void manipulator_read_status(manipulator_t *manipulator){
     rbpush(&manipulator->dq0, dq0);
     rbpush(&manipulator->dq1, dq1);
 
-    float ddq0 = calculate_slope(&manipulator->dq0, NUM_POINTS_FOR_ACC, manipulator->dt);
-    float ddq1 = calculate_slope(&manipulator->dq1, NUM_POINTS_FOR_ACC, manipulator->dt);
+    float ddq0 = calculate_slope(&manipulator->dq0, NUM_POINTS_FOR_ACC, manipulator->sensor_dt);
+    float ddq1 = calculate_slope(&manipulator->dq1, NUM_POINTS_FOR_ACC, manipulator->sensor_dt);
 
     global_ddq0 = ddq0;
     global_ddq1 = ddq1;
@@ -313,9 +313,102 @@ void manipulator_update_position_controller(manipulator_t *manipulator) {
     apply_velocity_input(manipulator, (float[]){u1, u2});
 }
 
+void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) {
+    // Guadagni del controllore PID esterno
+    const float Kp0 = 120.0f; // Guadagno proporzionale
+    const float Ki0 = 0.0f;  // Guadagno integrale
+    const float Kd0 = 17.0f;  // Guadagno derivativo
+
+    const float Kp1 = 125.0f; // Guadagno proporzionale
+    const float Ki1 = 0.0f;  // Guadagno integrale
+    const float Kd1 = 14.5f;  // Guadagno derivativo
+
+    // Limiti
+    const float VELOCITY_MAX = 2.0f; // rad/s
+    const float INTEGRAL_MAX = 10.0f;
+    const float DT = 0.01f; // 10 ms
+
+    // Leggi stati attuali (q, dq)
+    float q0, q1, dq0, dq1;
+    rbgetoffset(&manipulator->q0, 0, &q0);
+    rbgetoffset(&manipulator->q1, 0, &q1);
+    rbgetoffset(&manipulator->dq0, 0, &dq0);
+    rbgetoffset(&manipulator->dq1, 0, &dq1);
+
+    // Calcola matrici dinamiche B(q) e C(q, dq)
+    manipulator_calc_B(manipulator);
+    manipulator_calc_C(manipulator);
+
+    // --- CONTROLLO GIUNTO 0 ---
+    float err_q0 = manipulator->q0_setpoint - q0;
+    manipulator->integral_error_q0 += err_q0 * DT;  
+    // Anti-windup
+    if (manipulator->integral_error_q0 > INTEGRAL_MAX) manipulator->integral_error_q0 = INTEGRAL_MAX;
+    if (manipulator->integral_error_q0 < -INTEGRAL_MAX) manipulator->integral_error_q0 = -INTEGRAL_MAX;
+    float err_dq0 = 0.0f - dq0; // Errore di velocità (setpoint di velocità è 0)
+
+    // --- CONTROLLO GIUNTO 1 ---
+    float err_q1 = manipulator->q1_setpoint - q1;
+    manipulator->integral_error_q1 += err_q1 * DT;
+    // Anti-windup
+    if (manipulator->integral_error_q1 > INTEGRAL_MAX) manipulator->integral_error_q1 = INTEGRAL_MAX;
+    if (manipulator->integral_error_q1 < -INTEGRAL_MAX) manipulator->integral_error_q1 = -INTEGRAL_MAX;
+    float err_dq1 = 0.0f - dq1;
+
+    // Legge di controllo PID per l'accelerazione di riferimento (ddq_ref)
+    float ddq_ref0 = Kp0 * err_q0 + Ki0 * manipulator->integral_error_q0 + Kd0 * err_dq0;
+    float ddq_ref1 = Kp1 * err_q1 + Ki1 * manipulator->integral_error_q1 + Kd1 * err_dq1;
+
+    // Legge di controllo a dinamica inversa: u = B(q)*ddq_ref + C(q,dq)*dq
+    // Calcolo di C*dq
+    float C_dq0 = manipulator->C[0] * dq0 + manipulator->C[1] * dq1;
+    float C_dq1 = manipulator->C[2] * dq0 + manipulator->C[3] * dq1;
+
+    // Calcolo di B*ddq_ref
+    float B_ddq0 = manipulator->B[0] * ddq_ref0 + manipulator->B[1] * ddq_ref1;
+    float B_ddq1 = manipulator->B[2] * ddq_ref0 + manipulator->B[3] * ddq_ref1;
+
+    // Comando finale (coppia/velocità)
+    float u1 = B_ddq0 + C_dq0;
+    float u2 = B_ddq1 + C_dq1;
+
+    // Saturazione della velocità (clamping)
+    if (u1 > VELOCITY_MAX) u1 = VELOCITY_MAX;
+    if (u1 < -VELOCITY_MAX) u1 = -VELOCITY_MAX;
+    if (u2 > VELOCITY_MAX) u2 = VELOCITY_MAX;
+    if (u2 < -VELOCITY_MAX) u2 = -VELOCITY_MAX;
+
+    // Applica le velocità calcolate ai motori
+    apply_velocity_input(manipulator, (float[]){u1, u2});
+}
+
 void manipulator_reset_pid_controllers(manipulator_t *manipulator) {
     manipulator->position_controller_1.integral_error = 0.0f;
     manipulator->position_controller_1.previous_error = 0.0f;
     manipulator->position_controller_2.integral_error = 0.0f;
     manipulator->position_controller_2.previous_error = 0.0f;
+}
+
+void manipulator_calc_B(manipulator_t *manipulator){
+    float q1, q2;
+    rbgetoffset(&manipulator->q0, 0, &q1);
+    rbgetoffset(&manipulator->q1, 0, &q2);
+
+    manipulator->B[0] = (float) (0.0047413*cos(q1 + 2*q2) + 0.028554*cos(q1 + q2) + 0.078463*cos(q1) + 0.014224*cos(q2) + 0.045182);
+    manipulator->B[1] = (float) (0.0023706*cos(q1 + 2*q2) + 0.023453*cos(q1 + q2) + 0.039491*cos(q1) + 0.0094825*cos(q2) + 0.01103);
+    manipulator->B[2] = manipulator->B[1]; // La matrice è simmetrica
+    manipulator->B[3] = (float) (0.018351*cos(q1 + q2) + 0.039491*cos(q1) + 0.0047413*cos(q2) + 0.011032);
+}
+
+void manipulator_calc_C(manipulator_t *manipulator){
+    float q1, q2, dq1, dq2;
+    rbgetoffset(&manipulator->q0, 0, &q1);
+    rbgetoffset(&manipulator->q1, 0, &q2);
+    rbgetoffset(&manipulator->dq0, 0, &dq1);
+    rbgetoffset(&manipulator->dq1, 0, &dq2);
+
+    manipulator->C[0] = (float) ( - 0.5*dq2*(0.0047413*sin(q1 + 2*q2) + 0.010203*sin(q1 + q2) + 0.0094825*sin(q2)));
+    manipulator->C[1] = (float) ( - 0.000030008*(dq1 + dq2)*(79.0*sin(q1 + 2*q2) + 170*sin(q1 + q2) + 158*sin(q2)));
+    manipulator->C[2] = (float) (   dq1*(0.0023706*sin(q1 + 2*q2) + 0.0051014*sin(q1 + q2) + 0.0047413*sin(q2)));
+    manipulator->C[3] = (float) 0.0;
 }

@@ -60,7 +60,7 @@ typedef struct {
     TIM_HandleTypeDef motor_2;
     float current_position; // wrt end-effector
     float current_velocity; // wrt end-effector
-    float dt;
+    float sensor_dt;
 
     ringbuffer_t q0;
     ringbuffer_t q1;
@@ -74,6 +74,12 @@ typedef struct {
 
     float q0_setpoint;
     float q1_setpoint;
+
+    float integral_error_q0;
+    float integral_error_q1;
+
+    float B[4]; // Matrice di Inerzia B(q)
+    float C[4]; // Matrice di Coriolis C(q, dq)
 
     uint8_t calibration_triggered;
     uint8_t homed;
@@ -102,6 +108,7 @@ void calibration_stop(manipulator_t *manipulator);
 uint8_t calibration_check(manipulator_t *manipulator);
 void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value);
 void manipulator_update_position_controller(manipulator_t *manipulator);
+void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator);
 void manipulator_reset_pid_controllers(manipulator_t *manipulator);
 void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad, float q1_setpoint_rad);
 
@@ -110,4 +117,4 @@ void homing(manipulator_t *manipulator);
 uint8_t homing_check(manipulator_t *manipulator);
 uint8_t manipulator_error_check(manipulator_t *manipulator, float error_threshold1, float error_threshold2);
 
-#endif 
+#endif
