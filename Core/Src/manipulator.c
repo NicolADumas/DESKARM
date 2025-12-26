@@ -316,12 +316,12 @@ void manipulator_update_position_controller(manipulator_t *manipulator) {
 void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) {
     // Guadagni del controllore PID esterno
     const float Kp0 = 120.0f; // Guadagno proporzionale
-    const float Ki0 = 0.0f;  // Guadagno integrale
+    const float Ki0 = 1.0f;  // Guadagno integrale
     const float Kd0 = 17.0f;  // Guadagno derivativo
 
     const float Kp1 = 125.0f; // Guadagno proporzionale
-    const float Ki1 = 150.0f;  // Guadagno integrale
-    const float Kd1 = 14.5f;  // Guadagno derivativo
+    const float Ki1 = 1.0f;  // Guadagno integrale
+    const float Kd1 = 14.0f;  // Guadagno derivativo
 
     // Limiti
     const float VELOCITY_MAX = 2.0f; // rad/s
