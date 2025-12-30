@@ -18,6 +18,7 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     clear_manipulator_buffers(manipulator);
     manipulator->calibration_triggered = 0;
     manipulator->homed = 0;
+    manipulator->target_reached_start_tick = 0;
 
     pid_controller_t pc1, pc2;
     pc1.Kp = 3.7f;
@@ -233,9 +234,41 @@ uint8_t manipulator_error_check(manipulator_t *manipulator, float error_threshol
     return (error_q0 < error_threshold1) && (error_q1 < error_threshold2);
 }
 
+uint8_t manipulator_check_target_reached(manipulator_t *manipulator, float pos_tolerance, float vel_tolerance, uint32_t min_stable_time_ms) {
+    float current_q0, current_q1;
+    float current_dq0, current_dq1;
+
+    rbpeek(&manipulator->q0, &current_q0);
+    rbpeek(&manipulator->q1, &current_q1);
+    rbpeek(&manipulator->dq0, &current_dq0);
+    rbpeek(&manipulator->dq1, &current_dq1);
+
+    float error_q0 = fabsf(manipulator->q0_setpoint - current_q0);
+    float error_q1 = fabsf(manipulator->q1_setpoint - current_q1);
+    float vel_q0 = fabsf(current_dq0);
+    float vel_q1 = fabsf(current_dq1);
+
+    if (error_q0 <= pos_tolerance && error_q1 <= pos_tolerance &&
+        vel_q0 <= vel_tolerance && vel_q1 <= vel_tolerance) {
+        
+        if (manipulator->target_reached_start_tick == 0) {
+            manipulator->target_reached_start_tick = HAL_GetTick();
+        }
+
+        if ((HAL_GetTick() - manipulator->target_reached_start_tick) >= min_stable_time_ms) {
+            return 1;
+        }
+    } else {
+        manipulator->target_reached_start_tick = 0;
+    }
+
+    return 0;
+}
+
 void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad, float q1_setpoint_rad){
     manipulator->q0_setpoint = q0_setpoint_rad;
     manipulator->q1_setpoint = q1_setpoint_rad;
+    manipulator->target_reached_start_tick = 0;
 }
 
 
@@ -316,11 +349,11 @@ void manipulator_update_position_controller(manipulator_t *manipulator) {
 void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) {
     // Guadagni del controllore PID esterno
     const float Kp0 = 120.0f; // Guadagno proporzionale
-    const float Ki0 = 1.0f;  // Guadagno integrale
+    const float Ki0 = 0.0f;  // Guadagno integrale
     const float Kd0 = 17.0f;  // Guadagno derivativo
 
     const float Kp1 = 125.0f; // Guadagno proporzionale
-    const float Ki1 = 1.0f;  // Guadagno integrale
+    const float Ki1 = 0.0f;  // Guadagno integrale
     const float Kd1 = 14.0f;  // Guadagno derivativo
 
     // Limiti

@@ -81,6 +81,8 @@ typedef struct {
     float B[4]; // Matrice di Inerzia B(q)
     float C[4]; // Matrice di Coriolis C(q, dq)
 
+    uint32_t target_reached_start_tick;
+
     uint8_t calibration_triggered;
     uint8_t homed;
 } manipulator_t;
@@ -116,5 +118,6 @@ void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad
 void homing(manipulator_t *manipulator);
 uint8_t homing_check(manipulator_t *manipulator);
 uint8_t manipulator_error_check(manipulator_t *manipulator, float error_threshold1, float error_threshold2);
+uint8_t manipulator_check_target_reached(manipulator_t *manipulator, float pos_tolerance, float vel_tolerance, uint32_t min_stable_time_ms);
 
 #endif
