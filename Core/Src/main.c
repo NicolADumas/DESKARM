@@ -80,7 +80,7 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-	HAL_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -134,31 +134,31 @@ int main(void)
 		continue;
 	}
 
-	// Homing is complete, reset PID controllers once
-	if (homing_completed_first_time == 0) {
-		homing_completed_first_time = 1;
-		manipulator_reset_pid_controllers(&manipulator); // Reset PID state!
-		tick = HAL_GetTick(); // Reset tick to start the control loop fresh
-		manipulator_set_setpoints(&manipulator, 0.785f, 0.785f); // Set target to 45 deg (approx 0.785 rad)
-	}
+//	// Homing is complete, reset PID controllers once
+//	if (homing_completed_first_time == 0) {
+//		homing_completed_first_time = 1;
+//		manipulator_reset_pid_controllers(&manipulator); // Reset PID state!
+//		tick = HAL_GetTick(); // Reset tick to start the control loop fresh
+//		manipulator_set_setpoints(&manipulator, 0.785f, 0.785f); // Set target to 45 deg (approx 0.785 rad)
+//	}
 
 
-    if((HAL_GetTick() - tick) > 10){
-        tick = HAL_GetTick();
-
-        if (target_reached_flag == 0) {
-            // Check if target is reached (tolerance: 0.02 rad position, 0.01 rad/s velocity, stable for 200ms)
-            if (manipulator_check_target_reached(&manipulator, 0.0025f, 0.01f, 5)) {
-                target_reached_flag = 1;
-                // Stop motors
-                apply_velocity_input(&manipulator, (float[]){0.0f, 0.0f});
-            } else {
-                // Continue control
-                manipulator_update_inverse_dynamics_controller(&manipulator);
-            }
-        }
-        // If target_reached_flag is 1, we do nothing (motors stopped above)
-    }
+//    if((HAL_GetTick() - tick) > 10){
+//        tick = HAL_GetTick();
+//
+//        if (target_reached_flag == 0) {
+//            // Check if target is reached (tolerance: 0.02 rad position, 0.01 rad/s velocity, stable for 200ms)
+//            if (manipulator_check_target_reached(&manipulator, 0.0025f, 0.01f, 5)) {
+//                target_reached_flag = 1;
+//                // Stop motors
+//                apply_velocity_input(&manipulator, (float[]){0.0f, 0.0f});
+//            } else {
+//                // Continue control
+//                manipulator_update_inverse_dynamics_controller(&manipulator);
+//            }
+//        }
+//        // If target_reached_flag is 1, we do nothing (motors stopped above)
+//    }
 
 
     /* USER CODE END WHILE */
@@ -278,6 +278,3 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
-
-
-

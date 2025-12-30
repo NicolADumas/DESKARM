@@ -99,6 +99,8 @@ typedef struct {
 extern uint8_t rx_data[RX_BUFFER_SIZE]; 
 extern uint8_t tx_data[22];
 
+extern manipulator_t manipulator;
+
 // This function should init and start the encoders
 // REMOVE THIS FUNCTIONS FROM main.c, IT SHOULD ONLY CALL manipulator_init 
 void manipulator_init(manipulator_t *manipulator,

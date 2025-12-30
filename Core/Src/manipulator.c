@@ -15,8 +15,8 @@ uint8_t packet_idx = 0;
 uint8_t rx_data[RX_BUFFER_SIZE]; 
 uint8_t tx_data[22]; /* where the message will be saved for transmission */
 
-manipulator_t global_manipulator;
-
+float homing_last_error0, homing_last_error1;
+uint16_t homing_counter = 0;
 
 uint32_t crc32(const uint8_t *data, size_t length) {
     uint32_t crc = 0xFFFFFFFF;
@@ -34,23 +34,23 @@ uint32_t crc32(const uint8_t *data, size_t length) {
 
 // Packet Buffer Helpers
 int pb_push(Packet_t packet) {
-    uint8_t next_tail = (global_manipulator.mb_tail + 1) % MOTION_BUFFER_SIZE;
-    if (next_tail == global_manipulator.mb_head) {
+    uint8_t next_tail = (manipulator.mb_tail + 1) % MOTION_BUFFER_SIZE;
+    if (next_tail == manipulator.mb_head) {
         return 0; // Buffer Full
     }
-    global_manipulator.motion_buffer[global_manipulator.mb_tail] = packet;
-    global_manipulator.mb_tail = next_tail;
-    global_manipulator.mb_count++;
+    manipulator.motion_buffer[manipulator.mb_tail] = packet;
+    manipulator.mb_tail = next_tail;
+    manipulator.mb_count++;
     return 1;
 }
 
 int pb_pop(Packet_t *packet) {
-    if (global_manipulator.mb_head == global_manipulator.mb_tail) {
+    if (manipulator.mb_head == manipulator.mb_tail) {
         return 0; // Buffer Empty
     }
-    *packet = global_manipulator.motion_buffer[global_manipulator.mb_head];
-    global_manipulator.mb_head = (global_manipulator.mb_head + 1) % MOTION_BUFFER_SIZE;
-    global_manipulator.mb_count--;
+    *packet = manipulator.motion_buffer[manipulator.mb_head];
+    manipulator.mb_head = (manipulator.mb_head + 1) % MOTION_BUFFER_SIZE;
+    manipulator.mb_count--;
     return 1;
 }
 
@@ -75,7 +75,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
     // Let's implement a byte-by-byte parser, and ask for 1 byte at the end.
     
     uint8_t byte = rx_data[0];
-    
+
     switch(parse_state) {
         case PARSE_STATE_HEADER1:
             if (byte == START_BYTE_1) {
@@ -110,12 +110,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
                 // Checksum bytes 2 to 27 (len 26).
                 
                 uint32_t calc_crc = crc32(&packet_buffer[2], 26);
-                if (calc_crc == pkt->checksum) {
+//                if (calc_crc == pkt->checksum) {
                     // Valid Packet
                     if (pkt->cmd == CMD_TRAJECTORY) {
                         pb_push(*pkt);
                     } else if (pkt->cmd == CMD_HOMING) {
-                        calibration_start(&global_manipulator);
+                        calibration_start(&manipulator);
                     } else if (pkt->cmd == CMD_POS) {
                          // Prepare and send response
                          Feedback_POS_t fb;
@@ -124,8 +124,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
                          fb.type = RESP_POS;
                          
                          // Get Latest Values
-                         rbgetoffset(&global_manipulator.q0, 0, &fb.q0_actual);
-                         rbgetoffset(&global_manipulator.q1, 0, &fb.q1_actual);
+                         rbgetoffset(&manipulator.q0, 0, &fb.q0_actual);
+                         rbgetoffset(&manipulator.q1, 0, &fb.q1_actual);
                          
                          // Calc Checksum (Type + Q0 + Q1)
                          // Structure: Header(2) + Type(1) + Q0(4) + Q1(4) + CRC(4)
@@ -137,7 +137,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
                     }
                     // Send Feedback/ACK (Buffer Level)
                     // TODO: Implement transmit logic
-                } 
+//                }
                 
                 parse_state = PARSE_STATE_HEADER1;
             }
@@ -185,8 +185,6 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     uint32_t arr = htim->Instance->ARR;
     uint32_t psc = htim->Instance->PSC;
     manipulator->sensor_dt = (float)(arr + 1) * (float)(psc + 1) / (float)timer_clock;
-
-    global_manipulator = *manipulator;
 }
 
 void clear_manipulator_buffers(manipulator_t *manipulator){
@@ -317,6 +315,11 @@ void apply_velocity_input(manipulator_t *manipulator, float *u){
 
 void calibration_start(manipulator_t *manipulator){
     manipulator->calibration_triggered = 1;
+    manipulator->homed = 0;
+
+    homing_last_error0 = 0;
+    homing_last_error1 = 0;
+    homing_counter = 0;
     apply_velocity_input(manipulator, (float[2]){-0.5, 0.0});
 }
 
@@ -341,9 +344,6 @@ uint8_t homing_check(manipulator_t *manipulator){
 }
 
 void homing(manipulator_t *manipulator){
-    static float last_error0, last_error1;
-    static uint16_t counter = 0;
-
     manipulator_update_position_controller(manipulator);
     float current_q0, current_q1;
     rbpeek(&manipulator->q0, &current_q0);
@@ -352,14 +352,13 @@ void homing(manipulator_t *manipulator){
     float error_q0 = fabsf(manipulator->q0_setpoint - current_q0);
     float error_q1 = fabsf(manipulator->q1_setpoint - current_q1);
 
-    if(error_q0 - last_error0 ==0 && error_q1 - last_error1 ==0 && error_q0 < 0.2f && error_q1 < 0.2f){
-        counter++;
+    if(error_q0 - homing_last_error0 ==0 && error_q1 - homing_last_error1 ==0 && error_q0 < 0.2f && error_q1 < 0.2f){
+        homing_counter++;
     }
 
-    last_error0 = error_q0;
-    last_error1 = error_q1;
-
-    if(counter >= 10){ // 10 cycles of 10ms = 100ms stable
+    homing_last_error0 = error_q0;
+    homing_last_error1 = error_q1;
+    if(homing_counter >= 10){ // 10 cycles of 10ms = 100ms stable
         manipulator->homed = 1;
         apply_velocity_input(manipulator, (float[2]){0.0, 0.0});
     }
