@@ -56,6 +56,9 @@ typedef enum {
 
 typedef struct {
     Packet_t motion_buffer[MOTION_BUFFER_SIZE];
+    volatile uint8_t mb_head;
+    volatile uint8_t mb_tail;
+    volatile uint8_t mb_count;
     encoder_t encoder_1;
     encoder_t encoder_2;
     TIM_HandleTypeDef motor_1;

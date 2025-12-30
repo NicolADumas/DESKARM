@@ -18,6 +18,42 @@ uint8_t tx_data[22]; /* where the message will be saved for transmission */
 manipulator_t global_manipulator;
 
 
+uint32_t crc32(const uint8_t *data, size_t length) {
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < length; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            if (crc & 1)
+                crc = (crc >> 1) ^ 0xEDB88320;
+            else
+                crc = crc >> 1;
+        }
+    }
+    return ~crc;
+}
+
+// Packet Buffer Helpers
+int pb_push(Packet_t packet) {
+    uint8_t next_tail = (global_manipulator.mb_tail + 1) % MOTION_BUFFER_SIZE;
+    if (next_tail == global_manipulator.mb_head) {
+        return 0; // Buffer Full
+    }
+    global_manipulator.motion_buffer[global_manipulator.mb_tail] = packet;
+    global_manipulator.mb_tail = next_tail;
+    global_manipulator.mb_count++;
+    return 1;
+}
+
+int pb_pop(Packet_t *packet) {
+    if (global_manipulator.mb_head == global_manipulator.mb_tail) {
+        return 0; // Buffer Empty
+    }
+    *packet = global_manipulator.motion_buffer[global_manipulator.mb_head];
+    global_manipulator.mb_head = (global_manipulator.mb_head + 1) % MOTION_BUFFER_SIZE;
+    global_manipulator.mb_count--;
+    return 1;
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
     // This callback is called when the configured amount of bytes (now RX_BUFFER_SIZE?) is received?
     // In main.c you usually call HAL_UART_Receive_DMA(&huart2, rx_data, 1); to receive byte by byte?
@@ -111,6 +147,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
     // Reactivate Reception for 1 byte
     HAL_UART_Receive_DMA(huart, rx_data, 1); 
 }
+
 
 
 
