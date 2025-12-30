@@ -111,7 +111,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim10);
 
   calibration_start(&manipulator);
-  HAL_UART_Receive_DMA(&huart2, (uint8_t*) &rx_data, 1);
+  HAL_UART_Receive_DMA(&huart2, (uint8_t*) &rx_data, PACKET_SIZE);
   /* USER CODE END 2 */
 
   /* Infinite loop */
