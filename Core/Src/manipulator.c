@@ -8,6 +8,111 @@ float global_ddq0, global_ddq1;
 float global_v_calc1, global_v_calc2;
 
 
+uint8_t parse_state = PARSE_STATE_HEADER1;
+uint8_t packet_buffer[PACKET_SIZE];
+uint8_t packet_idx = 0;
+
+uint8_t rx_data[RX_BUFFER_SIZE]; 
+uint8_t tx_data[22]; /* where the message will be saved for transmission */
+
+manipulator_t global_manipulator;
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+    // This callback is called when the configured amount of bytes (now RX_BUFFER_SIZE?) is received?
+    // In main.c you usually call HAL_UART_Receive_DMA(&huart2, rx_data, 1); to receive byte by byte?
+    // OR allow a circular buffer.
+    
+    // Given the previous code called HAL_UART_Receive_DMA(..., DATA_SZ) which was 120,
+    // lets change it to receive 1 byte at a time for robust parsing, OR implement a large buffer.
+    // For simplicity given the constraints: 
+    // We will update main.c to receive 1 byte (circular mode) or small chunks.
+    
+    // Assuming we receive a chunk in rx_data[0]..rx_data[len-1]
+    // But standard HAL_UART_Receive_DMA with circular buffer just fills.
+    
+    // SIMPLIFIED logic for migration:
+    // We assume the caller (main.c) sets up reception of 1 byte or we poll?
+    // Wait, the previous code called `HAL_UART_Receive_DMA` again at the end of the callback.
+    // So it was ON-SHOT mode.
+    
+    // Let's implement a byte-by-byte parser, and ask for 1 byte at the end.
+    
+    uint8_t byte = rx_data[0];
+    
+    switch(parse_state) {
+        case PARSE_STATE_HEADER1:
+            if (byte == START_BYTE_1) {
+                parse_state = PARSE_STATE_HEADER2;
+                packet_buffer[0] = byte;
+                packet_idx = 1;
+            }
+            break;
+            
+        case PARSE_STATE_HEADER2:
+            if (byte == START_BYTE_2) {
+                parse_state = PARSE_STATE_BODY;
+                packet_buffer[1] = byte;
+                packet_idx = 2;
+            } else {
+                parse_state = PARSE_STATE_HEADER1; // Reset
+            }
+            break;
+            
+        case PARSE_STATE_BODY:
+            packet_buffer[packet_idx++] = byte;
+            if (packet_idx == PACKET_SIZE) {
+                // Full Packet Received. Verify CRC.
+                Packet_t *pkt = (Packet_t*)packet_buffer;
+                
+                // Calculate CRC of Cmd + Payload (bytes 2 to 27) -> Length 2+1+25? 
+                // Struct: Header(2) + Cmd(1) + Payload(25) + CRC(4) = 32
+                // We checksum the first 28 bytes? Or just Cmd+Payload?
+                // Python: checksum_data = cmd + payload.
+                // header(2) ... cmd(1) ... payload(25) ... crc(4)
+                //               ^ index 2                ^ index 28
+                // Checksum bytes 2 to 27 (len 26).
+                
+                uint32_t calc_crc = crc32(&packet_buffer[2], 26);
+                if (calc_crc == pkt->checksum) {
+                    // Valid Packet
+                    if (pkt->cmd == CMD_TRAJECTORY) {
+                        pb_push(*pkt);
+                    } else if (pkt->cmd == CMD_HOMING) {
+                        calibration_start(&global_manipulator);
+                    } else if (pkt->cmd == CMD_POS) {
+                         // Prepare and send response
+                         Feedback_POS_t fb;
+                         fb.header[0] = START_BYTE_1;
+                         fb.header[1] = START_BYTE_2;
+                         fb.type = RESP_POS;
+                         
+                         // Get Latest Values
+                         rbgetoffset(&global_manipulator.q0, 0, &fb.q0_actual);
+                         rbgetoffset(&global_manipulator.q1, 0, &fb.q1_actual);
+                         
+                         // Calc Checksum (Type + Q0 + Q1)
+                         // Structure: Header(2) + Type(1) + Q0(4) + Q1(4) + CRC(4)
+                         // Checksum over Type + Payload
+                         uint8_t *fb_ptr = (uint8_t*)&fb;
+                         fb.checksum = crc32(fb_ptr + 2, 9); // Type(1)+Q0(4)+Q1(4) = 9 bytes
+                         
+                         HAL_UART_Transmit_DMA(huart, (uint8_t*)&fb, sizeof(Feedback_POS_t));
+                    }
+                    // Send Feedback/ACK (Buffer Level)
+                    // TODO: Implement transmit logic
+                } 
+                
+                parse_state = PARSE_STATE_HEADER1;
+            }
+            break;
+    }
+
+    // Reactivate Reception for 1 byte
+    HAL_UART_Receive_DMA(huart, rx_data, 1); 
+}
+
+
 
 void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_t *encoder_2, TIM_HandleTypeDef *motor1, TIM_HandleTypeDef *motor2, TIM_HandleTypeDef *htim){
     manipulator->encoder_1 = *encoder_1;
@@ -43,6 +148,8 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     uint32_t arr = htim->Instance->ARR;
     uint32_t psc = htim->Instance->PSC;
     manipulator->sensor_dt = (float)(arr + 1) * (float)(psc + 1) / (float)timer_clock;
+
+    global_manipulator = *manipulator;
 }
 
 void clear_manipulator_buffers(manipulator_t *manipulator){

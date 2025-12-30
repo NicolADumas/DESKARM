@@ -15,6 +15,7 @@
 #include <math.h>
 #include "utils.h"
 #include "pid.h"
+#include "packet.h"
 
 #define NUM_POINTS_FOR_VEL 50
 #define NUM_POINTS_FOR_ACC 20
@@ -54,6 +55,7 @@ typedef enum {
 
 
 typedef struct {
+    Packet_t motion_buffer[MOTION_BUFFER_SIZE];
     encoder_t encoder_1;
     encoder_t encoder_2;
     TIM_HandleTypeDef motor_1;
@@ -61,6 +63,8 @@ typedef struct {
     float current_position; // wrt end-effector
     float current_velocity; // wrt end-effector
     float sensor_dt;
+
+    Packet_t current_setpoint;
 
     ringbuffer_t q0;
     ringbuffer_t q1;
@@ -88,7 +92,9 @@ typedef struct {
 } manipulator_t;
 
 
-
+#define RX_BUFFER_SIZE 64 
+extern uint8_t rx_data[RX_BUFFER_SIZE]; 
+extern uint8_t tx_data[22];
 
 // This function should init and start the encoders
 // REMOVE THIS FUNCTIONS FROM main.c, IT SHOULD ONLY CALL manipulator_init 
