@@ -235,8 +235,12 @@ void manipulator_read_status(manipulator_t *manipulator){
     rbpush(&manipulator->ddq0, ddq0);
     rbpush(&manipulator->ddq1, ddq1);
 
-    /* Signal Telemetry Ready */
-    manipulator->telemetry_ready = 1;
+    /* Signal Telemetry Ready (Decimated 1:5) */
+    static uint8_t telemetry_div = 0;
+    if (++telemetry_div >= 5) {
+        manipulator->telemetry_ready = 1;
+        telemetry_div = 0;
+    }
 }
 
 void manipulator_handle_telemetry(UART_HandleTypeDef *huart) {
