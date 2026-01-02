@@ -111,7 +111,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim10);
 
   calibration_start(&manipulator);
-  HAL_UART_Receive_DMA(&huart2, (uint8_t*) &rx_data, PACKET_SIZE);
+  HAL_UART_Receive_DMA(&huart2, uart_rx_buffer, UART_RX_BUFFER_SIZE);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -121,6 +121,7 @@ int main(void)
 
   while (1)
   {
+    manipulator_uart_process(&huart2);
 
     if(calibration_check(&manipulator)){
       continue;
@@ -134,31 +135,30 @@ int main(void)
 		continue;
 	}
 
-//	// Homing is complete, reset PID controllers once
-//	if (homing_completed_first_time == 0) {
-//		homing_completed_first_time = 1;
-//		manipulator_reset_pid_controllers(&manipulator); // Reset PID state!
-//		tick = HAL_GetTick(); // Reset tick to start the control loop fresh
-//		manipulator_set_setpoints(&manipulator, 0.785f, 0.785f); // Set target to 45 deg (approx 0.785 rad)
-//	}
+    if((HAL_GetTick() - tick) > 10){
+        tick = HAL_GetTick();
 
+        // Consuma un punto dalla coda se disponibile
+        if (manipulator_process_motion_queue(&manipulator)) {
+            target_reached_flag = 0; // Se abbiamo nuovi punti, resettiamo il flag di arrivo
+        }
 
-//    if((HAL_GetTick() - tick) > 10){
-//        tick = HAL_GetTick();
-//
-//        if (target_reached_flag == 0) {
-//            // Check if target is reached (tolerance: 0.02 rad position, 0.01 rad/s velocity, stable for 200ms)
-//            if (manipulator_check_target_reached(&manipulator, 0.0025f, 0.01f, 5)) {
-//                target_reached_flag = 1;
-//                // Stop motors
-//                apply_velocity_input(&manipulator, (float[]){0.0f, 0.0f});
-//            } else {
-//                // Continue control
-//                manipulator_update_inverse_dynamics_controller(&manipulator);
-//            }
-//        }
-//        // If target_reached_flag is 1, we do nothing (motors stopped above)
-//    }
+        if (target_reached_flag == 0) {
+            // Check if target is reached (tolerance: 0.02 rad position, 0.01 rad/s velocity, stable for 200ms)
+            // Nota: se stiamo eseguendo una traiettoria, il target cambia continuamente, quindi check_target_reached potrebbe non scattare finché non ci fermiamo.
+            // Tuttavia, se il buffer si svuota, process_motion_queue setta dq=0, quindi potremmo fermarci.
+            
+            if (manipulator_check_target_reached(&manipulator, 0.0025f, 0.01f, 5)) {
+                target_reached_flag = 1;
+                // Stop motors
+                apply_velocity_input(&manipulator, (float[]){0.0f, 0.0f});
+            } else {
+                // Continue control
+                manipulator_update_position_controller(&manipulator); //manipulator_update_inverse_dynamics_controller(&manipulator);
+            }
+        }
+        // If target_reached_flag is 1, we do nothing (motors stopped above)
+    }
 
 
     /* USER CODE END WHILE */

@@ -122,6 +122,7 @@ uint8_t calibration_check(manipulator_t *manipulator);
 void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value);
 void manipulator_update_position_controller(manipulator_t *manipulator);
 void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator);
+int manipulator_process_motion_queue(manipulator_t *manipulator);
 void manipulator_reset_pid_controllers(manipulator_t *manipulator);
 void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad, float q1_setpoint_rad);
 
@@ -130,5 +131,10 @@ void homing(manipulator_t *manipulator);
 uint8_t homing_check(manipulator_t *manipulator);
 uint8_t manipulator_error_check(manipulator_t *manipulator, float error_threshold1, float error_threshold2);
 uint8_t manipulator_check_target_reached(manipulator_t *manipulator, float pos_tolerance, float vel_tolerance, uint32_t min_stable_time_ms);
+
+/* UART Circular Buffer Definitions */
+#define UART_RX_BUFFER_SIZE 512
+extern uint8_t uart_rx_buffer[UART_RX_BUFFER_SIZE];
+void manipulator_uart_process(UART_HandleTypeDef *huart);
 
 #endif

@@ -13,10 +13,12 @@ uint8_t packet_buffer[PACKET_SIZE];
 uint8_t packet_idx = 0;
 
 uint8_t rx_data[RX_BUFFER_SIZE]; 
+uint32_t global_size;
 uint8_t tx_data[22]; /* where the message will be saved for transmission */
 
 float homing_last_error0, homing_last_error1;
 uint16_t homing_counter = 0;
+float globa_setpint_q0, globa_setpint_q1;
 
 uint32_t crc32(const uint8_t *data, size_t length) {
     uint32_t crc = 0xFFFFFFFF;
@@ -41,6 +43,7 @@ int pb_push(Packet_t packet) {
     manipulator.motion_buffer[manipulator.mb_tail] = packet;
     manipulator.mb_tail = next_tail;
     manipulator.mb_count++;
+    global_size = manipulator.mb_count;
     return 1;
 }
 
@@ -54,44 +57,87 @@ int pb_pop(Packet_t *packet) {
     return 1;
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
-    // Check if we received a full packet (PACKET_SIZE bytes)
-    // We assume rx_data contains the full packet now.
+
+uint8_t uart_rx_buffer[UART_RX_BUFFER_SIZE];
+uint16_t uart_rx_tail = 0;
+
+void manipulator_uart_process(UART_HandleTypeDef *huart) {
+    uint16_t head = UART_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart->hdmarx);
     
-    if (rx_data[0] == START_BYTE_1 && rx_data[1] == START_BYTE_2) {
-        Packet_t *pkt = (Packet_t*)rx_data;
+    // Process all available data
+    while (uart_rx_tail != head) {
+        // Calculate available bytes considering wrap-around
+        uint16_t available;
+        if (head >= uart_rx_tail) {
+            available = head - uart_rx_tail;
+        } else {
+            available = UART_RX_BUFFER_SIZE - uart_rx_tail + head;
+        }
         
-        // Calculate CRC of Cmd + Payload (bytes 2 to 27) -> Length 26
-        uint32_t calc_crc = crc32(&rx_data[2], 26);
+        if (available < PACKET_SIZE) {
+            // Not enough data for a full packet yet
+            break; 
+        }
         
-        // if (calc_crc == pkt->checksum) { // Uncomment to enable CRC check
-            if (pkt->cmd == CMD_TRAJECTORY) {
-                pb_push(*pkt);
-            } else if (pkt->cmd == CMD_HOMING) {
-                calibration_start(&manipulator);
-            } else if (pkt->cmd == CMD_POS) {
-                 // Prepare and send response
-                 Feedback_POS_t fb;
-                 fb.header[0] = START_BYTE_1;
-                 fb.header[1] = START_BYTE_2;
-                 fb.type = RESP_POS;
-                 
-                 // Get Latest Values
-                 rbgetoffset(&manipulator.q0, 0, &fb.q0_actual);
-                 rbgetoffset(&manipulator.q1, 0, &fb.q1_actual);
-                 
-                 // Calc Checksum (Type + Q0 + Q1)
-                 uint8_t *fb_ptr = (uint8_t*)&fb;
-                 fb.checksum = crc32(fb_ptr + 2, 9); // Type(1)+Q0(4)+Q1(4) = 9 bytes
-                 
-                 HAL_UART_Transmit_DMA(huart, (uint8_t*)&fb, sizeof(Feedback_POS_t));
+        // Check for header at tail
+        uint8_t b1 = uart_rx_buffer[uart_rx_tail];
+        uint8_t b2 = uart_rx_buffer[(uart_rx_tail + 1) % UART_RX_BUFFER_SIZE];
+        
+        if (b1 == START_BYTE_1 && b2 == START_BYTE_2) {
+            // Potential packet found.
+            // Copy to temp buffer to handle wrap-around easily
+            uint8_t temp_pkt[PACKET_SIZE];
+            for (int i = 0; i < PACKET_SIZE; i++) {
+                temp_pkt[i] = uart_rx_buffer[(uart_rx_tail + i) % UART_RX_BUFFER_SIZE];
             }
-        // }
+            
+            // Verify CRC
+            Packet_t *pkt = (Packet_t*)temp_pkt;
+            uint32_t calc_crc = crc32(&temp_pkt[2], 26);
+            
+            // Robust check: Verify CRC
+            // If CRC matches, we process. If not, we skip 1 byte and try again.
+            // Note: User previously had CRC check commented out. 
+            // For robustness, we SHOULD check it.
+            if (calc_crc == pkt->checksum) {
+                 // Valid packet! Process it.
+                 if (pkt->cmd == CMD_TRAJECTORY) {
+                     pb_push(*pkt);
+                 } else if (pkt->cmd == CMD_HOMING) {
+                     calibration_start(&manipulator);
+                 } else if (pkt->cmd == CMD_POS) {
+                      Feedback_POS_t fb;
+                      fb.header[0] = START_BYTE_1;
+                      fb.header[1] = START_BYTE_2;
+                      fb.type = RESP_POS;
+                      rbgetoffset(&manipulator.q0, 0, &fb.q0_actual);
+                      rbgetoffset(&manipulator.q1, 0, &fb.q1_actual);
+                      uint8_t *fb_ptr = (uint8_t*)&fb;
+                      fb.checksum = crc32(fb_ptr + 2, 9);
+                      HAL_UART_Transmit_DMA(huart, (uint8_t*)&fb, sizeof(Feedback_POS_t));
+                 }
+                 
+                 // Advance tail by PACKET_SIZE
+                 uart_rx_tail = (uart_rx_tail + PACKET_SIZE) % UART_RX_BUFFER_SIZE;
+            } else {
+                 // Invalid CRC. This is not a valid packet (or data corruption).
+                 // Advance tail by 1 to search for next header.
+                 uart_rx_tail = (uart_rx_tail + 1) % UART_RX_BUFFER_SIZE;
+            }
+        } else {
+            // Not a header. Advance tail by 1.
+            uart_rx_tail = (uart_rx_tail + 1) % UART_RX_BUFFER_SIZE;
+        }
     }
-    
-    // Restart reception for the next full packet
-    HAL_UART_Receive_DMA(huart, rx_data, PACKET_SIZE); 
 }
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+    // In circular mode, this is called when the buffer is full (wraps around).
+    // We don't need to do anything here as we poll in the main loop.
+    // However, we could use this to trigger a flag if we wanted interrupt-driven processing,
+    // but polling is safer for the "process" function to avoid concurrency issues with the main loop logic.
+}
+
 
 
 
@@ -359,7 +405,24 @@ void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad
     manipulator->target_reached_start_tick = 0;
 }
 
-
+int manipulator_process_motion_queue(manipulator_t *manipulator) {
+    Packet_t packet;
+    if (pb_pop(&packet)) {
+        manipulator->current_setpoint = packet;
+        manipulator->q0_setpoint = packet.q0;
+        manipulator->q1_setpoint = packet.q1;
+        globa_setpint_q0 = packet.q0;
+        globa_setpint_q1 = packet.q1;
+        return 1;
+    } else{
+        // Buffer empty: maintain last position setpoint, but zero out velocity/acceleration feedforward
+        manipulator->current_setpoint.dq0 = 0.0f;
+        manipulator->current_setpoint.dq1 = 0.0f;
+        manipulator->current_setpoint.ddq0 = 0.0f;
+        manipulator->current_setpoint.ddq1 = 0.0f;
+        return 0;
+    }
+}
 
 
 void manipulator_update_position_controller(manipulator_t *manipulator) {
@@ -466,7 +529,7 @@ void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) 
     // Anti-windup
     if (manipulator->integral_error_q0 > INTEGRAL_MAX) manipulator->integral_error_q0 = INTEGRAL_MAX;
     if (manipulator->integral_error_q0 < -INTEGRAL_MAX) manipulator->integral_error_q0 = -INTEGRAL_MAX;
-    float err_dq0 = 0.0f - dq0; // Errore di velocità (setpoint di velocità è 0)
+    float err_dq0 = manipulator->current_setpoint.dq0 - dq0; // Errore di velocità
 
     // --- CONTROLLO GIUNTO 1 ---
     float err_q1 = manipulator->q1_setpoint - q1;
@@ -474,11 +537,11 @@ void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) 
     // Anti-windup
     if (manipulator->integral_error_q1 > INTEGRAL_MAX) manipulator->integral_error_q1 = INTEGRAL_MAX;
     if (manipulator->integral_error_q1 < -INTEGRAL_MAX) manipulator->integral_error_q1 = -INTEGRAL_MAX;
-    float err_dq1 = 0.0f - dq1;
+    float err_dq1 = manipulator->current_setpoint.dq1 - dq1;
 
     // Legge di controllo PID per l'accelerazione di riferimento (ddq_ref)
-    float ddq_ref0 = Kp0 * err_q0 + Ki0 * manipulator->integral_error_q0 + Kd0 * err_dq0;
-    float ddq_ref1 = Kp1 * err_q1 + Ki1 * manipulator->integral_error_q1 + Kd1 * err_dq1;
+    float ddq_ref0 = manipulator->current_setpoint.ddq0 + Kp0 * err_q0 + Ki0 * manipulator->integral_error_q0 + Kd0 * err_dq0;
+    float ddq_ref1 = manipulator->current_setpoint.ddq1 + Kp1 * err_q1 + Ki1 * manipulator->integral_error_q1 + Kd1 * err_dq1;
 
     // Legge di controllo a dinamica inversa: u = B(q)*ddq_ref + C(q,dq)*dq
     // Calcolo di C*dq
