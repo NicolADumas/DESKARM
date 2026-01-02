@@ -92,6 +92,8 @@ typedef struct {
 
     uint8_t calibration_triggered;
     uint8_t homed;
+    
+    volatile uint8_t telemetry_ready;
 } manipulator_t;
 
 
@@ -136,5 +138,6 @@ uint8_t manipulator_check_target_reached(manipulator_t *manipulator, float pos_t
 #define UART_RX_BUFFER_SIZE 512
 extern uint8_t uart_rx_buffer[UART_RX_BUFFER_SIZE];
 void manipulator_uart_process(UART_HandleTypeDef *huart);
+void manipulator_handle_telemetry(UART_HandleTypeDef *huart);
 
 #endif

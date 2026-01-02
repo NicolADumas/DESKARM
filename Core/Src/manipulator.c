@@ -1,4 +1,5 @@
 #include "manipulator.h"
+#include "usart.h"
 
 float global_degs1, global_degs2;
 int8_t global_dir1, global_dir2;
@@ -152,6 +153,7 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     manipulator->calibration_triggered = 0;
     manipulator->homed = 0;
     manipulator->target_reached_start_tick = 0;
+    manipulator->telemetry_ready = 0;
 
     pid_controller_t pc1, pc2;
     pc1.Kp = 3.7f;
@@ -232,6 +234,40 @@ void manipulator_read_status(manipulator_t *manipulator){
 
     rbpush(&manipulator->ddq0, ddq0);
     rbpush(&manipulator->ddq1, ddq1);
+
+    /* Signal Telemetry Ready */
+    manipulator->telemetry_ready = 1;
+}
+
+void manipulator_handle_telemetry(UART_HandleTypeDef *huart) {
+    if (manipulator.telemetry_ready) {
+        // Check if UART is ready. If it's BUSY_TX, we cannot transmit.
+        if (huart->gState == HAL_UART_STATE_READY) {
+            static Feedback_POS_t telemetry_pkt;
+            
+            float q0 = 0.0f, q1 = 0.0f;
+
+            
+            if (rbgetoffset(&manipulator.q0, 0, &q0) == 0) {
+                q0 = global_degs1 * (M_PI / 180.0f);
+                q1 = global_degs2 * (M_PI / 180.0f);
+            } else {
+                rbgetoffset(&manipulator.q1, 0, &q1);
+            }
+            
+
+            telemetry_pkt.header[0] = START_BYTE_1;
+            telemetry_pkt.header[1] = START_BYTE_2;
+            telemetry_pkt.type = RESP_POS;
+            telemetry_pkt.q0_actual = q0;
+            telemetry_pkt.q1_actual = q1;
+            telemetry_pkt.checksum = crc32(((uint8_t*)&telemetry_pkt) + 2, 9);
+
+            if (HAL_UART_Transmit_DMA(huart, (uint8_t*)&telemetry_pkt, sizeof(Feedback_POS_t)) == HAL_OK) {
+                manipulator.telemetry_ready = 0;
+            }
+        }
+    }
 }
 
 

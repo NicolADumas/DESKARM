@@ -122,6 +122,7 @@ int main(void)
   while (1)
   {
     manipulator_uart_process(&huart2);
+    manipulator_handle_telemetry(&huart2);
 
     if(calibration_check(&manipulator)){
       continue;
