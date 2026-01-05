@@ -1,147 +1,27 @@
 #include "manipulator.h"
-#include "usart.h"
+#include "usart.h" // Needed? Likely used in main.c or protocol.c now, but if we call HAL functions here...
+// Note: header includes protocol.h and controller.h
 
 float global_degs1, global_degs2;
 int8_t global_dir1, global_dir2;
 
 float global_dq0, global_dq1;
 float global_ddq0, global_ddq1;
-float global_v_calc1, global_v_calc2;
+// global_v_calc1, global_v_calc2 moved to controller.c (or declared extern if needed here)
 
-
-uint8_t parse_state = PARSE_STATE_HEADER1;
-uint8_t packet_buffer[PACKET_SIZE];
-uint8_t packet_idx = 0;
-
-uint8_t rx_data[RX_BUFFER_SIZE]; 
+// parse_state etc moved to protocol.c
 uint32_t global_size;
-uint8_t tx_data[22]; /* where the message will be saved for transmission */
-
 float homing_last_error0, homing_last_error1;
 uint16_t homing_counter = 0;
-float globa_setpint_q0, globa_setpint_q1;
+float globa_setpint_q0, globa_setpint_q1; // Typo preserved from original
 
-uint32_t crc32(const uint8_t *data, size_t length) {
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < length; i++) {
-        crc ^= data[i];
-        for (int j = 0; j < 8; j++) {
-            if (crc & 1)
-                crc = (crc >> 1) ^ 0xEDB88320;
-            else
-                crc = crc >> 1;
-        }
-    }
-    return ~crc;
-}
-
-// Packet Buffer Helpers
-int pb_push(Packet_t packet) {
-    uint8_t next_tail = (manipulator.mb_tail + 1) % MOTION_BUFFER_SIZE;
-    if (next_tail == manipulator.mb_head) {
-        return 0; // Buffer Full
-    }
-    manipulator.motion_buffer[manipulator.mb_tail] = packet;
-    manipulator.mb_tail = next_tail;
-    manipulator.mb_count++;
-    global_size = manipulator.mb_count;
-    return 1;
-}
-
-int pb_pop(Packet_t *packet) {
-    if (manipulator.mb_head == manipulator.mb_tail) {
-        return 0; // Buffer Empty
-    }
-    *packet = manipulator.motion_buffer[manipulator.mb_head];
-    manipulator.mb_head = (manipulator.mb_head + 1) % MOTION_BUFFER_SIZE;
-    manipulator.mb_count--;
-    return 1;
-}
-
-
-uint8_t uart_rx_buffer[UART_RX_BUFFER_SIZE];
-uint16_t uart_rx_tail = 0;
-
-void manipulator_uart_process(UART_HandleTypeDef *huart) {
-    uint16_t head = UART_RX_BUFFER_SIZE - __HAL_DMA_GET_COUNTER(huart->hdmarx);
-    
-    // Process all available data
-    while (uart_rx_tail != head) {
-        // Calculate available bytes considering wrap-around
-        uint16_t available;
-        if (head >= uart_rx_tail) {
-            available = head - uart_rx_tail;
-        } else {
-            available = UART_RX_BUFFER_SIZE - uart_rx_tail + head;
-        }
-        
-        if (available < PACKET_SIZE) {
-            // Not enough data for a full packet yet
-            break; 
-        }
-        
-        // Check for header at tail
-        uint8_t b1 = uart_rx_buffer[uart_rx_tail];
-        uint8_t b2 = uart_rx_buffer[(uart_rx_tail + 1) % UART_RX_BUFFER_SIZE];
-        
-        if (b1 == START_BYTE_1 && b2 == START_BYTE_2) {
-            // Potential packet found.
-            // Copy to temp buffer to handle wrap-around easily
-            uint8_t temp_pkt[PACKET_SIZE];
-            for (int i = 0; i < PACKET_SIZE; i++) {
-                temp_pkt[i] = uart_rx_buffer[(uart_rx_tail + i) % UART_RX_BUFFER_SIZE];
-            }
-            
-            // Verify CRC
-            Packet_t *pkt = (Packet_t*)temp_pkt;
-            uint32_t calc_crc = crc32(&temp_pkt[2], 26);
-            
-            // Robust check: Verify CRC
-            // If CRC matches, we process. If not, we skip 1 byte and try again.
-            // Note: User previously had CRC check commented out. 
-            // For robustness, we SHOULD check it.
-            if (calc_crc == pkt->checksum) {
-                 // Valid packet! Process it.
-                 if (pkt->cmd == CMD_TRAJECTORY) {
-                     pb_push(*pkt);
-                 } else if (pkt->cmd == CMD_HOMING) {
-                     calibration_start(&manipulator);
-                 } else if (pkt->cmd == CMD_POS) {
-                      Feedback_POS_t fb;
-                      fb.header[0] = START_BYTE_1;
-                      fb.header[1] = START_BYTE_2;
-                      fb.type = RESP_POS;
-                      rbgetoffset(&manipulator.q0, 0, &fb.q0_actual);
-                      rbgetoffset(&manipulator.q1, 0, &fb.q1_actual);
-                      uint8_t *fb_ptr = (uint8_t*)&fb;
-                      fb.checksum = crc32(fb_ptr + 2, 9);
-                      HAL_UART_Transmit_DMA(huart, (uint8_t*)&fb, sizeof(Feedback_POS_t));
-                 }
-                 
-                 // Advance tail by PACKET_SIZE
-                 uart_rx_tail = (uart_rx_tail + PACKET_SIZE) % UART_RX_BUFFER_SIZE;
-            } else {
-                 // Invalid CRC. This is not a valid packet (or data corruption).
-                 // Advance tail by 1 to search for next header.
-                 uart_rx_tail = (uart_rx_tail + 1) % UART_RX_BUFFER_SIZE;
-            }
-        } else {
-            // Not a header. Advance tail by 1.
-            uart_rx_tail = (uart_rx_tail + 1) % UART_RX_BUFFER_SIZE;
-        }
-    }
-}
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
-    // In circular mode, this is called when the buffer is full (wraps around).
-    // We don't need to do anything here as we poll in the main loop.
-    // However, we could use this to trigger a flag if we wanted interrupt-driven processing,
-    // but polling is safer for the "process" function to avoid concurrency issues with the main loop logic.
-}
-
-
-
-
+// crc32 moved to protocol.c
+// pb_push/pop moved to protocol.c
+// manipulator_uart_process moved to protocol.c
+// HAL_UART_RxCpltCallback moved to protocol.c (if kept) or removed. 
+// Note: HAL_UART_RxCpltCallback is a weak callback override. It should ideally assume where it is needed. 
+// If it was in manipulator.c, moving it to protocol.c is cleaner.
+// I will NOT include it here.
 
 void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_t *encoder_2, TIM_HandleTypeDef *motor1, TIM_HandleTypeDef *motor2, TIM_HandleTypeDef *htim){
     manipulator->encoder_1 = *encoder_1;
@@ -243,106 +123,9 @@ void manipulator_read_status(manipulator_t *manipulator){
     }
 }
 
-void manipulator_handle_telemetry(UART_HandleTypeDef *huart) {
-    if (manipulator.telemetry_ready) {
-        // Check if UART is ready. If it's BUSY_TX, we cannot transmit.
-        if (huart->gState == HAL_UART_STATE_READY) {
-            static Feedback_POS_t telemetry_pkt;
-            
-            float q0 = 0.0f, q1 = 0.0f;
-
-            
-            if (rbgetoffset(&manipulator.q0, 0, &q0) == 0) {
-                q0 = global_degs1 * (M_PI / 180.0f);
-                q1 = global_degs2 * (M_PI / 180.0f);
-            } else {
-                rbgetoffset(&manipulator.q1, 0, &q1);
-            }
-            
-
-            telemetry_pkt.header[0] = START_BYTE_1;
-            telemetry_pkt.header[1] = START_BYTE_2;
-            telemetry_pkt.type = RESP_POS;
-            telemetry_pkt.q0_actual = q0;
-            telemetry_pkt.q1_actual = q1;
-            telemetry_pkt.checksum = crc32(((uint8_t*)&telemetry_pkt) + 2, 9);
-
-            if (HAL_UART_Transmit_DMA(huart, (uint8_t*)&telemetry_pkt, sizeof(Feedback_POS_t)) == HAL_OK) {
-                manipulator.telemetry_ready = 0;
-            }
-        }
-    }
-}
-
-
-
-void manipulator_set_motor_velocity(manipulator_t *manipulator, motor_id_t motor, float speed_rad_s) {
-    // --- IMPOSTAZIONI COMUNI ---
-    const uint32_t TIMER_INPUT_FREQ = HAL_RCC_GetPCLK1Freq() * 2;
-    const uint32_t PRESCALER = 99;
-    const uint32_t TIMER_COUNT_FREQ = TIMER_INPUT_FREQ / (PRESCALER + 1); // Should be 1,000,000 Hz
-
-    TIM_HandleTypeDef *motor_timer;
-    GPIO_TypeDef* dir_port;
-    uint16_t dir_pin;
-    float reduction;
-    float microsteps;
-    uint8_t dir_inverted;
-
-    if (motor == MOTOR_1) {
-        motor_timer = &manipulator->motor_1;
-        dir_port = DIR_1_GPIO_Port;
-        dir_pin = DIR_1_Pin;
-        reduction = REDUCTION_1;
-        microsteps = MICROSTEPS_1;
-        dir_inverted = 0;
-    } else { // MOTOR_2
-        motor_timer = &manipulator->motor_2;
-        dir_port = DIR_2_GPIO_Port;
-        dir_pin = DIR_2_Pin;
-        reduction = REDUCTION_2;
-        microsteps = MICROSTEPS_2;
-        dir_inverted = 1;
-    }
-
-    // --- IMPOSTA DIREZIONE ---
-    GPIO_PinState dir_state = (speed_rad_s < 0) ? GPIO_PIN_SET : GPIO_PIN_RESET;
-    if (dir_inverted) {
-        dir_state = (dir_state == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
-    }
-    HAL_GPIO_WritePin(dir_port, dir_pin, dir_state);
-
-    // --- CALCOLA FREQUENZA E ARR ---
-    float abs_speed = fabsf(speed_rad_s);
-    uint32_t arr;
-
-    if (abs_speed < 0.001f) {
-        arr = 0; // Ferma il motore
-    } else {
-        float motor_speed_rad_s = abs_speed * reduction;
-        float step_freq = motor_speed_rad_s * (STEPS_PER_REVOLUTION / TWO_PI) * microsteps;
-
-        if (step_freq > 0) {
-            arr = (uint32_t)(TIMER_COUNT_FREQ / step_freq);
-            if (arr < 10) arr = 10; // Limite per evitare frequenze troppo alte
-        } else {
-            arr = 0;
-        }
-    }
-
-    // --- APPLICA VALORI AL TIMER ---
-    __HAL_TIM_SET_PRESCALER(motor_timer, PRESCALER);
-    __HAL_TIM_SET_AUTORELOAD(motor_timer, arr);
-    __HAL_TIM_SET_COMPARE(motor_timer, TIM_CHANNEL_1, arr > 0 ? arr / 2 : 0); // Duty 50% o 0
-    motor_timer->Instance->EGR = TIM_EGR_UG;
-}
-
-
-void apply_velocity_input(manipulator_t *manipulator, float *u){
-    manipulator_set_motor_velocity(manipulator, MOTOR_1, u[0]);
-    manipulator_set_motor_velocity(manipulator, MOTOR_2, u[1]);
-}
-
+// manipulator_handle_telemetry moved to protocol.c
+// manipulator_set_motor_velocity moved to controller.c
+// apply_velocity_input moved to controller.c
 
 void calibration_start(manipulator_t *manipulator){
     manipulator->calibration_triggered = 1;
@@ -447,7 +230,7 @@ void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad
 
 int manipulator_process_motion_queue(manipulator_t *manipulator) {
     Packet_t packet;
-    if (pb_pop(&packet)) {
+    if (pb_pop(manipulator, &packet)) {
         manipulator->current_setpoint = packet;
         manipulator->q0_setpoint = packet.q0;
         manipulator->q1_setpoint = packet.q1;
@@ -462,182 +245,4 @@ int manipulator_process_motion_queue(manipulator_t *manipulator) {
         manipulator->current_setpoint.ddq1 = 0.0f;
         return 0;
     }
-}
-
-
-void manipulator_update_position_controller(manipulator_t *manipulator) {
-    // Limiti per l'anti-windup dell'integrale e per la velocità massima
-    const float INTEGRAL_MAX = 10.0f;
-    const float VELOCITY_MAX = 2.0f; // rad/s
-    const float DT = 0.01f; // 10 ms
-
-    // --- CONTROLLORE GIUNTO 0 ---
-    float current_q0;
-    rbpeek(&manipulator->q0, &current_q0); // Legge la posizione più recente senza rimuoverla
-
-    float error_q0 = manipulator->q0_setpoint - current_q0;
-
-    // Termine Proporzionale
-    float p_term_q0 = manipulator->position_controller_1.Kp * error_q0;
-
-    // Termine Integrale (con anti-windup)
-    manipulator->position_controller_1.integral_error += error_q0 * DT;
-    if (manipulator->position_controller_1.integral_error > INTEGRAL_MAX) manipulator->position_controller_1.integral_error = INTEGRAL_MAX;
-    if (manipulator->position_controller_1.integral_error < -INTEGRAL_MAX) manipulator->position_controller_1.integral_error = -INTEGRAL_MAX;
-    float i_term_q0 = manipulator->position_controller_1.Ki * manipulator->position_controller_1.integral_error;
-
-    // Termine Derivativo
-    float derivative_error_q0 = (error_q0 - manipulator->position_controller_1.previous_error) / DT;
-    float d_term_q0 = manipulator->position_controller_1.Kd * derivative_error_q0;
-    manipulator->position_controller_1.previous_error = error_q0;
-
-    // Calcolo della velocità di comando (output del PID)
-    float u0 = p_term_q0 + i_term_q0 + d_term_q0;
-
-    // --- CONTROLLORE GIUNTO 1 ---
-    float current_q1;
-    rbpeek(&manipulator->q1, &current_q1);
-
-    float error_q1 = manipulator->q1_setpoint - current_q1;
-    float p_term_q1 = manipulator->position_controller_2.Kp * error_q1;
-    manipulator->position_controller_2.integral_error += error_q1 * DT;
-    if (manipulator->position_controller_2.integral_error > INTEGRAL_MAX) manipulator->position_controller_2.integral_error = INTEGRAL_MAX;
-    if (manipulator->position_controller_2.integral_error < -INTEGRAL_MAX) manipulator->position_controller_2.integral_error = -INTEGRAL_MAX;
-    float i_term_q1 = manipulator->position_controller_2.Ki * manipulator->position_controller_2.integral_error;
-    float derivative_error_q1 = (error_q1 - manipulator->position_controller_2.previous_error) / DT;
-    float d_term_q1 = manipulator->position_controller_2.Kd * derivative_error_q1;
-    manipulator->position_controller_2.previous_error = error_q1;
-
-    // Calcolo uscita di controllo (velocità desiderata)
-    float u1 = p_term_q0 + i_term_q0 + d_term_q0;
-    float u2 = p_term_q1 + i_term_q1 + d_term_q1;
-
-    // --- SOFTWARE ENDSTOPS ---
-	// Check limit for motor 1 (q0)
-	if ((current_q0 <= Q0_MIN_RAD && u1 < 0.0f)) {
-		u1 = 0.0f;
-	}
-
-	// Check limit for motor 2 (q1)
-	if ((current_q1 >= Q1_MAX_RAD && u2 > 0.0f)) {
-		u2 = 0.0f;
-	}
-
-    // Saturazione della velocità (clamping)
-    if (u1 > VELOCITY_MAX) u1 = VELOCITY_MAX;
-    if (u1 < -VELOCITY_MAX) u1 = -VELOCITY_MAX;
-    if (u2 > VELOCITY_MAX) u2 = VELOCITY_MAX;
-    if (u2 < -VELOCITY_MAX) u2 = -VELOCITY_MAX;
-
-    global_v_calc1 = u1;
-    global_v_calc2 = u2;
-    
-
-    // Applica le velocità calcolate ai motori
-    apply_velocity_input(manipulator, (float[]){u1, u2});
-}
-
-void manipulator_update_inverse_dynamics_controller(manipulator_t *manipulator) {
-    // Guadagni del controllore PID esterno
-    const float Kp0 = 120.0f; // Guadagno proporzionale
-    const float Ki0 = 0.0f;  // Guadagno integrale
-    const float Kd0 = 17.0f;  // Guadagno derivativo
-
-    const float Kp1 = 125.0f; // Guadagno proporzionale
-    const float Ki1 = 0.0f;  // Guadagno integrale
-    const float Kd1 = 14.0f;  // Guadagno derivativo
-
-    // Limiti
-    const float VELOCITY_MAX = 2.0f; // rad/s
-    const float INTEGRAL_MAX = 10.0f;
-    const float DT = 0.01f; // 10 ms
-
-    // Leggi stati attuali (q, dq)
-    float q0, q1, dq0, dq1;
-    rbgetoffset(&manipulator->q0, 0, &q0);
-    rbgetoffset(&manipulator->q1, 0, &q1);
-    rbgetoffset(&manipulator->dq0, 0, &dq0);
-    rbgetoffset(&manipulator->dq1, 0, &dq1);
-
-    // Calcola matrici dinamiche B(q) e C(q, dq)
-    manipulator_calc_B(manipulator);
-    manipulator_calc_C(manipulator);
-
-    // --- CONTROLLO GIUNTO 0 ---
-    float err_q0 = manipulator->q0_setpoint - q0;
-    manipulator->integral_error_q0 += err_q0 * DT;  
-    // Anti-windup
-    if (manipulator->integral_error_q0 > INTEGRAL_MAX) manipulator->integral_error_q0 = INTEGRAL_MAX;
-    if (manipulator->integral_error_q0 < -INTEGRAL_MAX) manipulator->integral_error_q0 = -INTEGRAL_MAX;
-    float err_dq0 = manipulator->current_setpoint.dq0 - dq0; // Errore di velocità
-
-    // --- CONTROLLO GIUNTO 1 ---
-    float err_q1 = manipulator->q1_setpoint - q1;
-    manipulator->integral_error_q1 += err_q1 * DT;
-    // Anti-windup
-    if (manipulator->integral_error_q1 > INTEGRAL_MAX) manipulator->integral_error_q1 = INTEGRAL_MAX;
-    if (manipulator->integral_error_q1 < -INTEGRAL_MAX) manipulator->integral_error_q1 = -INTEGRAL_MAX;
-    float err_dq1 = manipulator->current_setpoint.dq1 - dq1;
-
-    // Legge di controllo PID per l'accelerazione di riferimento (ddq_ref)
-    float ddq_ref0 = manipulator->current_setpoint.ddq0 + Kp0 * err_q0 + Ki0 * manipulator->integral_error_q0 + Kd0 * err_dq0;
-    float ddq_ref1 = manipulator->current_setpoint.ddq1 + Kp1 * err_q1 + Ki1 * manipulator->integral_error_q1 + Kd1 * err_dq1;
-
-    // Legge di controllo a dinamica inversa: u = B(q)*ddq_ref + C(q,dq)*dq
-    // Calcolo di C*dq
-    float C_dq0 = manipulator->C[0] * dq0 + manipulator->C[1] * dq1;
-    float C_dq1 = manipulator->C[2] * dq0 + manipulator->C[3] * dq1;
-
-    // Calcolo di B*ddq_ref
-    float B_ddq0 = manipulator->B[0] * ddq_ref0 + manipulator->B[1] * ddq_ref1;
-    float B_ddq1 = manipulator->B[2] * ddq_ref0 + manipulator->B[3] * ddq_ref1;
-
-    // Comando finale (coppia/velocità)
-    float u1 = B_ddq0 + C_dq0;
-    float u2 = B_ddq1 + C_dq1;
-
-    // Saturazione della velocità (clamping)
-    if (u1 > VELOCITY_MAX) u1 = VELOCITY_MAX;
-    if (u1 < -VELOCITY_MAX) u1 = -VELOCITY_MAX;
-    if (u2 > VELOCITY_MAX) u2 = VELOCITY_MAX;
-    if (u2 < -VELOCITY_MAX) u2 = -VELOCITY_MAX;
-
-    global_v_calc1 = u1;
-    global_v_calc2 = u2;
-
-    // Applica le velocità calcolate ai motori
-    apply_velocity_input(manipulator, (float[]){u1, u2});
-}
-
-void manipulator_reset_pid_controllers(manipulator_t *manipulator) {
-    manipulator->position_controller_1.integral_error = 0.0f;
-    manipulator->position_controller_1.previous_error = 0.0f;
-    manipulator->position_controller_2.integral_error = 0.0f;
-    manipulator->position_controller_2.previous_error = 0.0f;
-    manipulator->integral_error_q0 = 0.0f;
-    manipulator->integral_error_q1 = 0.0f;
-}
-
-void manipulator_calc_B(manipulator_t *manipulator){
-    float q1, q2;
-    rbgetoffset(&manipulator->q0, 0, &q1);
-    rbgetoffset(&manipulator->q1, 0, &q2);
-
-    manipulator->B[0] = (float) (0.0047413*cos(q1 + 2*q2) + 0.028554*cos(q1 + q2) + 0.078463*cos(q1) + 0.014224*cos(q2) + 0.045182);
-    manipulator->B[1] = (float) (0.0023706*cos(q1 + 2*q2) + 0.023453*cos(q1 + q2) + 0.039491*cos(q1) + 0.0094825*cos(q2) + 0.01103);
-    manipulator->B[2] = manipulator->B[1]; // La matrice è simmetrica
-    manipulator->B[3] = (float) (0.018351*cos(q1 + q2) + 0.039491*cos(q1) + 0.0047413*cos(q2) + 0.011032);
-}
-
-void manipulator_calc_C(manipulator_t *manipulator){
-    float q1, q2, dq1, dq2;
-    rbgetoffset(&manipulator->q0, 0, &q1);
-    rbgetoffset(&manipulator->q1, 0, &q2);
-    rbgetoffset(&manipulator->dq0, 0, &dq1);
-    rbgetoffset(&manipulator->dq1, 0, &dq2);
-
-    manipulator->C[0] = (float) ( - 0.5*dq2*(0.0047413*sin(q1 + 2*q2) + 0.010203*sin(q1 + q2) + 0.0094825*sin(q2)));
-    manipulator->C[1] = (float) ( - 0.000030008*(dq1 + dq2)*(79.0*sin(q1 + 2*q2) + 170*sin(q1 + q2) + 158*sin(q2)));
-    manipulator->C[2] = (float) (   dq1*(0.0023706*sin(q1 + 2*q2) + 0.0051014*sin(q1 + q2) + 0.0047413*sin(q2)));
-    manipulator->C[3] = (float) 0.0;
 }

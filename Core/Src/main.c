@@ -27,6 +27,7 @@
 /* USER CODE BEGIN Includes */
 #include "encoder.h"
 #include "manipulator.h"
+// Note: manipulator.h includes protocol.h and controller.h now, so functions are available.
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -121,8 +122,9 @@ int main(void)
 
   while (1)
   {
-    manipulator_uart_process(&huart2);
-    manipulator_handle_telemetry(&huart2);
+    // Updated signature: passing manipulator pointer
+    manipulator_uart_process(&manipulator, &huart2);
+    manipulator_handle_telemetry(&manipulator, &huart2);
 
     if(calibration_check(&manipulator)){
       continue;
@@ -275,7 +277,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
