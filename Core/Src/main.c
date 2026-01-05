@@ -48,12 +48,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+// --- GLOBAL INSTANCES ---
 manipulator_t manipulator;
 encoder_t enc1;
 encoder_t enc2;
 uint32_t tick=0;
-
-
 
 /* USER CODE END PV */
 
@@ -79,19 +78,14 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
-  /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -105,6 +99,7 @@ int main(void)
   MX_TIM10_Init();
   /* USER CODE BEGIN 2 */
 
+  // --- SYSTEM INITIALIZATION ---
   encoder_init(&htim3, &enc1);
   encoder_init(&htim4, &enc2);
   manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10);
@@ -112,6 +107,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim10);
 
   calibration_start(&manipulator);
+  // Start UART DMA Reception
   HAL_UART_Receive_DMA(&huart2, uart_rx_buffer, UART_RX_BUFFER_SIZE);
   /* USER CODE END 2 */
 
@@ -120,17 +116,21 @@ int main(void)
   static uint8_t homing_completed_first_time = 0;
   static uint8_t target_reached_flag = 0;
 
+  // --- MAIN LOOP ---
   while (1)
   {
-    // Updated signature: passing manipulator pointer
+    // Process UART packets
     manipulator_uart_process(&manipulator, &huart2);
+    // Send Telemetry
     manipulator_handle_telemetry(&manipulator, &huart2);
 
+    // If calibrating, skip the rest
     if(calibration_check(&manipulator)){
       continue;
     }
 
-	if(homing_check(&manipulator) == 0){ // If not homed, run homing
+    // If not homed, perform homing
+	if(homing_check(&manipulator) == 0){ 
 		if((HAL_GetTick() - tick) > 10){
 			tick = HAL_GetTick();
 			homing(&manipulator);
@@ -138,29 +138,29 @@ int main(void)
 		continue;
 	}
 
+    // --- CONTROL LOOP (approx 100Hz) ---
     if((HAL_GetTick() - tick) > 10){
         tick = HAL_GetTick();
 
-        // Consuma un punto dalla coda se disponibile
+        // Consume a point from the queue if available
         if (manipulator_process_motion_queue(&manipulator)) {
-            target_reached_flag = 0; // Se abbiamo nuovi punti, resettiamo il flag di arrivo
+            target_reached_flag = 0; // If we have new points, reset arrival flag
         }
 
         if (target_reached_flag == 0) {
-            // Check if target is reached (tolerance: 0.02 rad position, 0.01 rad/s velocity, stable for 200ms)
-            // Nota: se stiamo eseguendo una traiettoria, il target cambia continuamente, quindi check_target_reached potrebbe non scattare finché non ci fermiamo.
-            // Tuttavia, se il buffer si svuota, process_motion_queue setta dq=0, quindi potremmo fermarci.
+            // Check if target is reached (tolerance: 0.0025 rad position, 0.01 rad/s velocity, stable for 50ms (5 ticks))
+            // Note: if executing a trajectory, the target changes continuously, so check_target_reached might not trigger until we stop.
+            // However, if the buffer empties, process_motion_queue sets dq=0, so we might stop.
             
             if (manipulator_check_target_reached(&manipulator, 0.0025f, 0.01f, 5)) {
                 target_reached_flag = 1;
                 // Stop motors
                 apply_velocity_input(&manipulator, (float[]){0.0f, 0.0f});
             } else {
-                // Continue control
-                manipulator_update_position_controller(&manipulator); //manipulator_update_inverse_dynamics_controller(&manipulator);
+                // Run position control
+                manipulator_update_position_controller(&manipulator); 
             }
         }
-        // If target_reached_flag is 1, we do nothing (motors stopped above)
     }
 
 
@@ -221,6 +221,7 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+// --- INTERRUPT CALLBACKS ---
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 	if(htim->Instance == TIM10){ /* check if it is the proper instance */
     manipulator_read_status(&manipulator);

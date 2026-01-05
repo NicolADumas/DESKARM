@@ -1,29 +1,21 @@
 #include "manipulator.h"
-#include "usart.h" // Needed? Likely used in main.c or protocol.c now, but if we call HAL functions here...
-// Note: header includes protocol.h and controller.h
+#include "usart.h" 
 
+// --- MANIPULATOR GLOBAL VARIABLES ---
 float global_degs1, global_degs2;
 int8_t global_dir1, global_dir2;
 
 float global_dq0, global_dq1;
 float global_ddq0, global_ddq1;
-// global_v_calc1, global_v_calc2 moved to controller.c (or declared extern if needed here)
 
-// parse_state etc moved to protocol.c
 uint32_t global_size;
 float homing_last_error0, homing_last_error1;
 uint16_t homing_counter = 0;
-float globa_setpint_q0, globa_setpint_q1; // Typo preserved from original
+float globa_setpint_q0, globa_setpint_q1; 
 
-// crc32 moved to protocol.c
-// pb_push/pop moved to protocol.c
-// manipulator_uart_process moved to protocol.c
-// HAL_UART_RxCpltCallback moved to protocol.c (if kept) or removed. 
-// Note: HAL_UART_RxCpltCallback is a weak callback override. It should ideally assume where it is needed. 
-// If it was in manipulator.c, moving it to protocol.c is cleaner.
-// I will NOT include it here.
-
+// --- INITIALIZATION ---
 void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_t *encoder_2, TIM_HandleTypeDef *motor1, TIM_HandleTypeDef *motor2, TIM_HandleTypeDef *htim){
+    // Hardware linking
     manipulator->encoder_1 = *encoder_1;
     manipulator->encoder_2 = *encoder_2;
     manipulator->motor_1 = *motor1;
@@ -35,24 +27,19 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     manipulator->target_reached_start_tick = 0;
     manipulator->telemetry_ready = 0;
 
+    // Default PID Parameters
     pid_controller_t pc1, pc2;
-    pc1.Kp = 3.7f;
-    pc1.Ki = 0.01f;
-    pc1.Kd = 0.3f;
-    pc1.previous_error = 0.0f;
-    pc1.integral_error = 0.0f;
+    pc1.Kp = 3.7f; pc1.Ki = 0.01f; pc1.Kd = 0.3f;
+    pc1.previous_error = 0.0f; pc1.integral_error = 0.0f;
 
-    pc2.Kp = 4.7f;
-    pc2.Ki = 0.01f;
-    pc2.Kd = 0.3f;
-    pc2.previous_error = 0.0f;
-    pc2.integral_error = 0.0f;
+    pc2.Kp = 4.7f; pc2.Ki = 0.01f; pc2.Kd = 0.3f;
+    pc2.previous_error = 0.0f; pc2.integral_error = 0.0f;
 
-    // 3. Copia le strutture inizializzate nella struttura del manipolatore
+    // 3. Copy initialized structures to manipulator structure
     manipulator->position_controller_1 = pc1;
     manipulator->position_controller_2 = pc2;
 
-    // calculate period with arr e psc and pclk1 frequency
+    // Calculate period with ARR, PSC and PCLK1 frequency
     uint32_t pclk1_freq = HAL_RCC_GetPCLK1Freq();
     uint32_t timer_clock = pclk1_freq * 2; // TIMxCLK
     uint32_t arr = htim->Instance->ARR;
@@ -76,27 +63,31 @@ void manipulator_start(manipulator_t *manipulator){
     HAL_TIM_PWM_Start(&manipulator->motor_2, TIM_CHANNEL_1);
 }
 
+// --- STATUS READ AND SENSORS ---
 void manipulator_read_status(manipulator_t *manipulator){
     float degs1, degs2;
     int8_t dir1, dir2;
 
+    // Read Encoders
     encoder_read(&manipulator->encoder_1, &degs1, &dir1);
     encoder_read(&manipulator->encoder_2, &degs2, &dir2);
 
     degs1 = degs1; // wrap-around already handled by encoder
-    degs2 = -1*degs2;
+    degs2 = -1*degs2; // Invert for convention
 
     global_degs1 = degs1;
     global_degs2 = degs2;
     global_dir1 = dir1;
     global_dir2 = dir2;
 
-    float q0 = degs1 * (M_PI / 180.0f); // Convert degrees to radians
+    // Convert Degrees -> Radians and Push to Buffer
+    float q0 = degs1 * (M_PI / 180.0f); 
     float q1 = degs2 * (M_PI / 180.0f);
 
     rbpush(&manipulator->q0, q0);
     rbpush(&manipulator->q1, q1);
 
+    // Estimate Velocity and Acceleration (Numerical Differentiation)
     float dq0 = calculate_slope(&manipulator->q0, NUM_POINTS_FOR_VEL, manipulator->sensor_dt);
     float dq1 = calculate_slope(&manipulator->q1, NUM_POINTS_FOR_VEL, manipulator->sensor_dt);
 
@@ -123,10 +114,7 @@ void manipulator_read_status(manipulator_t *manipulator){
     }
 }
 
-// manipulator_handle_telemetry moved to protocol.c
-// manipulator_set_motor_velocity moved to controller.c
-// apply_velocity_input moved to controller.c
-
+// --- CALIBRATION AND HOMING ---
 void calibration_start(manipulator_t *manipulator){
     manipulator->calibration_triggered = 1;
     manipulator->homed = 0;
@@ -134,6 +122,7 @@ void calibration_start(manipulator_t *manipulator){
     homing_last_error0 = 0;
     homing_last_error1 = 0;
     homing_counter = 0;
+    // Move slowly towards endstops
     apply_velocity_input(manipulator, (float[2]){-0.5, 0.0});
 }
 
@@ -153,6 +142,7 @@ void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_
     encoder_set_count(encoder, calibration_value);
 }
 
+// --- HOMING LOGIC ---
 uint8_t homing_check(manipulator_t *manipulator){
     return manipulator->homed;
 }
@@ -166,20 +156,21 @@ void homing(manipulator_t *manipulator){
     float error_q0 = fabsf(manipulator->q0_setpoint - current_q0);
     float error_q1 = fabsf(manipulator->q1_setpoint - current_q1);
 
+    // Check error stability (when stable near 0, homing finished)
     if(error_q0 - homing_last_error0 ==0 && error_q1 - homing_last_error1 ==0 && error_q0 < 0.2f && error_q1 < 0.2f){
         homing_counter++;
     }
 
     homing_last_error0 = error_q0;
     homing_last_error1 = error_q1;
-    if(homing_counter >= 10){ // 10 cycles of 10ms = 100ms stable
+    if(homing_counter >= 10){ // Stable for 100ms (10 cycles of 10ms)
         manipulator->homed = 1;
         apply_velocity_input(manipulator, (float[2]){0.0, 0.0});
     }
     
 }
 
-
+// --- TARGET REACHED CHECK ---
 uint8_t manipulator_error_check(manipulator_t *manipulator, float error_threshold1, float error_threshold2){
     float current_q0, current_q1;
     rbpeek(&manipulator->q0, &current_q0);
@@ -228,6 +219,7 @@ void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad
     manipulator->target_reached_start_tick = 0;
 }
 
+// --- MOTION QUEUE PROCESSING ---
 int manipulator_process_motion_queue(manipulator_t *manipulator) {
     Packet_t packet;
     if (pb_pop(manipulator, &packet)) {
