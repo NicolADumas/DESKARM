@@ -64,6 +64,7 @@ typedef struct {
     encoder_t encoder_2;
     TIM_HandleTypeDef motor_1;
     TIM_HandleTypeDef motor_2;
+    TIM_HandleTypeDef pen_timer;
     float current_position; // wrt end-effector
     float current_velocity; // wrt end-effector
     float sensor_dt;

@@ -78,11 +78,14 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
+
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
   /* USER CODE BEGIN Init */
   /* USER CODE END Init */
 
+  /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
@@ -97,13 +100,15 @@ int main(void)
   MX_TIM2_Init();
   MX_TIM5_Init();
   MX_TIM10_Init();
+  MX_TIM11_Init();
   /* USER CODE BEGIN 2 */
 
   // --- SYSTEM INITIALIZATION ---
   encoder_init(&htim3, &enc1);
   encoder_init(&htim4, &enc2);
-  manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10);
+  manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10, &htim11);
   manipulator_start(&manipulator);
+  control_pen(&manipulator, PEN_UP);
   HAL_TIM_Base_Start_IT(&htim10);
 
   calibration_start(&manipulator);

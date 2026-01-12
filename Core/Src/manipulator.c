@@ -14,12 +14,14 @@ uint16_t homing_counter = 0;
 float globa_setpint_q0, globa_setpint_q1; 
 
 // --- INITIALIZATION ---
-void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_t *encoder_2, TIM_HandleTypeDef *motor1, TIM_HandleTypeDef *motor2, TIM_HandleTypeDef *htim){
+void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_t *encoder_2, TIM_HandleTypeDef *motor1, TIM_HandleTypeDef *motor2, TIM_HandleTypeDef *htim, TIM_HandleTypeDef *pen_timer){
     // Hardware linking
     manipulator->encoder_1 = *encoder_1;
     manipulator->encoder_2 = *encoder_2;
     manipulator->motor_1 = *motor1;
     manipulator->motor_2 = *motor2;
+    manipulator->pen_timer = *pen_timer;
+
 
     clear_manipulator_buffers(manipulator);
     manipulator->calibration_triggered = 0;
@@ -61,6 +63,7 @@ void manipulator_start(manipulator_t *manipulator){
     encoder_start(&manipulator->encoder_2);
     HAL_TIM_PWM_Start(&manipulator->motor_1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&manipulator->motor_2, TIM_CHANNEL_1);
+    HAL_TIM_PWM_Start(&manipulator->pen_timer, TIM_CHANNEL_1);
 }
 
 // --- STATUS READ AND SENSORS ---
@@ -228,6 +231,7 @@ int manipulator_process_motion_queue(manipulator_t *manipulator) {
         manipulator->q1_setpoint = packet.q1;
         globa_setpint_q0 = packet.q0;
         globa_setpint_q1 = packet.q1;
+
         return 1;
     } else{
         // Buffer empty: maintain last position setpoint, but zero out velocity/acceleration feedforward
@@ -238,3 +242,25 @@ int manipulator_process_motion_queue(manipulator_t *manipulator) {
         return 0;
     }
 }
+
+void control_pen(manipulator_t *manipulator, uint8_t pen_state){
+    // obtain ARR from manipulator->pen_timer
+	const uint32_t max_arr = 1250;
+    float dc = 0.5;
+    // calculate pulse width
+    uint32_t pulse = (uint32_t)(dc * (float)(max_arr + 1));
+	if(pen_state == PEN_UP){
+        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, 500);
+        HAL_Delay(1000);
+        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, 1500);
+        HAL_Delay(1000);
+        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, 2500);
+
+    }else{
+        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, pulse + 100);
+
+	}
+
+}
+
+
