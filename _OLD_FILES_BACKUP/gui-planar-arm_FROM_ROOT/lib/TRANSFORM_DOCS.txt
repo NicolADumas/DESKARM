@@ -1,0 +1,24 @@
+DOCUMENTAZIONE LIBRERIA TRASFORMAZIONI (transform.py)
+=======================================================
+
+Questo file gestisce le trasformazioni geometriche avanzate, in particolare per la modalità di scrittura curva.
+
+FUNZIONI
+--------
+
+- apply_curved_transform(trajectory, radius, start_angle_deg=90)
+  
+  Converte una traiettoria pensata per uno spazio lineare (XY cartesiano classico) in uno spazio curvilineo (Polare).
+  
+  **Logica di Trasformazione:**
+  - L'input **X** (lunghezza) viene mappato sulla **Circonfereza** (lunghezza d'arco).
+  - L'input **Y** (altezza) viene mappato sul **Raggio** (distanza dal centro).
+  - L'input **Z** (Alzata penna) rimane invariato.
+
+  **Parametri:**
+  - `trajectory`: Lista di punti dizionario {'x', 'y', 'z'}.
+  - `radius`: Raggio base della curvatura.
+  - `start_angle_deg`: Angolo di partenza per la scrittura (default 90° = in alto).
+
+  **Utilizzo:**
+  Questa funzione permette di prendere una qualsiasi scritta o disegno lineare e "curvarlo" attorno al robot mantenendo le proporzioni corrette (le lettere interne sono più strette di quelle esterne, come i raggi di una ruota).

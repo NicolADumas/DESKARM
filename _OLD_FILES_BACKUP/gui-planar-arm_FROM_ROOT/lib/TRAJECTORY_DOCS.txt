@@ -1,0 +1,78 @@
+DOCUMENTAZIONE LIBRERIA TRAIETTORIE (trajpy.py)
+=================================================
+
+Questo file descrive le funzioni principali contenute nel modulo `trajpy.py`, utilizzato per la generazione di traiettorie e cinetica del manipolatore.
+
+1. GENERAZIONE POLINOMIALE
+--------------------------
+Queste funzioni calcolano i coefficienti per interpolare punti nel tempo.
+
+- time_row(t, deg, der)
+  Calcola una riga della matrice di Vandermonde [1, t, t^2, ... t^n] o le sue derivate. 
+  Utile per risolvere sistemi lineari per trovare i coefficienti dei polinomi.
+
+- spline3(q, dq)
+  Calcola i coefficienti di una Spline Cubica (3° ordine).
+  Input: Lista di (posizione, tempo) e (velocità, tempo).
+  Output: Funzioni lambda per posizione, velocità e accelerazione.
+  Profilo: q(t) = a0 + a1*t + a2*t^2 + a3*t^3
+
+- spline5(q, dq, ddq)
+  Calcola i coefficienti di una Spline Quintica (5° ordine).
+  Input: Liste di (pos, time), (vel, time), (acc, time).
+  Output: Coefficienti del polinomio di 5° grado. Permette di controllare anche l'accelerazione ai nodi.
+
+- compose_spline3(q, ddqm, dts)
+  Crea una traiettoria completa unendo più spline cubiche tra una sequenza di punti.
+
+2. PROFILI DI VELOCITÀ
+----------------------
+Queste funzioni generano leggi di moto con profili di velocità specifici.
+
+- trapezoidal(q, ddqm, tf)
+  Genera un profilo di velocità trapezoidale (Accelerazione costante -> Velocità costante -> Decelerazione costante).
+  Input: Punti q, accelerazione max ddqm, durata tf.
+  Se tf non è specificato, calcola il tempo minimo (profilo Bang-Bang).
+  Output: Funzioni per q(t), dq(t), ddq(t) e durata.
+
+- compose_trapezoidal(q, ddqm)
+  Applica il profilo trapezoidale a una sequenza di punti.
+
+- cycloidal(q, ddqm, tf)
+  Genera una traiettoria cicloidale.
+  Caratteristica: L'accelerazione ha un andamento sinusoidale, partendo e finendo a zero. Molto dolce, evita scatti (jerk ridotto).
+  Formula base: q(t) ~ t - sin(t)
+  Output: Funzioni per q(t), dq(t), ddq(t).
+
+- compose_cycloidal(q, ddqm)
+  Applica il profilo cicloidale a una sequenza di punti.
+
+3. CINEMATICA (KINEMATICS)
+--------------------------
+Funzioni per convertire tra spazio cartesiano (x,y) e spazio giunti (q1,q2).
+
+- ik(x, y, z, theta, sizes)
+  Inverse Kinematics (Cinematica Inversa).
+  Calcola gli angoli dei motori (q1, q2) dato il punto cartesiano (x, y) desiderato.
+
+- dk(q, sizes)
+  Direct Kinematics (Cinematica Diretta).
+  Calcola la posizione cartesiana (x, y) dati gli angoli dei motori.
+
+4. UTILITIES & CLASSI
+---------------------
+
+- Point (class)
+  Classe helper per operazioni vettoriali 2D (somma, sottrazione, rotazione, prodotto scalare).
+
+- rangef(start, step, end)
+  Generatore di range float (simile a range() ma per numeri decimali).
+
+- slice_trj(patch, **kargs)
+  Funzione core per il "Slicing" della traiettoria.
+  Prende un "patch" (segmento di linea o arco) e lo suddivide in punti discreti basandosi su una legge oraria (lineare o circolare) e sulla cinematica inversa.
+  Nuovo Supporto (2026): Accetta parametro opzionale 'angle' (delta) in patch['data'] per forzare la direzione e l'ampiezza esatta dell'arco (risolve ambiguità CW/CCW).
+  Restituisce le liste di comandi ai motori (q0s, q1s) campionati nel tempo.
+
+- find_velocities / find_accelerations
+  Calcolo numerico di velocità e accelerazione partendo da una lista di posizioni campionate nel tempo.
