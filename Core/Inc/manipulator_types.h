@@ -25,9 +25,9 @@
 /* REDUCTION OF THE MOTOR 2*/
 #define REDUCTION_2 5.0f
 /* MICROSTEPS MOTOR 1*/
-#define MICROSTEPS_1 16
+#define MICROSTEPS_1 32
 /* MICROSTEPS MOTOR 2*/
-#define MICROSTEPS_2 16
+#define MICROSTEPS_2 32
 
 /* CALIBRATION MOTOR 1*/ 
 #define CALIBRATION_1 6549 // CNT value at calibration position
