@@ -22,14 +22,14 @@
 #define PID_KI_TRACKING_1 0.0f
 #define PID_KD_TRACKING_1 0.2f
 #define PID_FF_TRACKING_1 1.01f
-#define PID_ACC_FF_TRACKING_1 0.15f
+#define PID_ACC_FF_TRACKING_1 0.12f
 
 // Tracking - Joint 2
 #define PID_KP_TRACKING_2 8.0f
 #define PID_KI_TRACKING_2 0.0f
 #define PID_KD_TRACKING_2 0.2f
 #define PID_FF_TRACKING_2 1.04f
-#define PID_ACC_FF_TRACKING_2 0.15f
+#define PID_ACC_FF_TRACKING_2 0.12f
 
 float global_degs1, global_degs2;
 int8_t global_dir1, global_dir2;
