@@ -18,24 +18,32 @@
 #define PID_ACC_FF_HOMING_2 0.0f
 
 // Tracking - Joint 1
-#define PID_KP_TRACKING_1 9.0f
-#define PID_KI_TRACKING_1 0.01f
-#define PID_KD_TRACKING_1 0.15f
+#define PID_KP_TRACKING_1 8.0f
+#define PID_KI_TRACKING_1 0.0f
+#define PID_KD_TRACKING_1 0.2f
 #define PID_FF_TRACKING_1 1.01f
-#define PID_ACC_FF_TRACKING_1 0.12f
+#define PID_ACC_FF_TRACKING_1 0.15f
 
 // Tracking - Joint 2
-#define PID_KP_TRACKING_2 9.0f
-#define PID_KI_TRACKING_2 0.01f
-#define PID_KD_TRACKING_2 0.15f
+#define PID_KP_TRACKING_2 8.0f
+#define PID_KI_TRACKING_2 0.0f
+#define PID_KD_TRACKING_2 0.2f
 #define PID_FF_TRACKING_2 1.04f
-#define PID_ACC_FF_TRACKING_2 0.12f
+#define PID_ACC_FF_TRACKING_2 0.15f
 
 float global_degs1, global_degs2;
 int8_t global_dir1, global_dir2;
 
 float global_dq0, global_dq1;
 float global_ddq0, global_ddq1;
+
+// --- PEN SERVO CONFIGURATION ---
+// TIM11 Running at 1MHz (1us tick). 50Hz PWM (20000 ticks period).
+// Servo Range: 1000us (1ms) to 2000us (2ms) usually.
+// Adjust these values based on mechanical calibration.
+#define PEN_PWM_UP 1600   // Lifted position
+#define PEN_PWM_DOWN 1100 // Drawing position
+
 
 uint32_t global_size;
 float homing_last_error0, homing_last_error1;
@@ -293,6 +301,9 @@ int manipulator_process_motion_queue(manipulator_t *manipulator) {
         globa_setpint_q0 = packet.q0;
         globa_setpint_q1 = packet.q1;
 
+        // Update Pen State
+        control_pen(manipulator, packet.pen_up);
+
         return 1;
     } else{
         // Buffer empty: maintain last position setpoint, but zero out velocity/acceleration feedforward
@@ -305,23 +316,11 @@ int manipulator_process_motion_queue(manipulator_t *manipulator) {
 }
 
 void control_pen(manipulator_t *manipulator, uint8_t pen_state){
-    // obtain ARR from manipulator->pen_timer
-	const uint32_t max_arr = 1250;
-    float dc = 0.5;
-    // calculate pulse width
-    uint32_t pulse = (uint32_t)(dc * (float)(max_arr + 1));
-	if(pen_state == PEN_UP){
-        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, 500);
-        HAL_Delay(1000);
-        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, 1500);
-        HAL_Delay(1000);
-        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, 2500);
-
+    if(pen_state == PEN_UP){
+        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, PEN_PWM_UP);
     }else{
-        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, pulse + 100);
-
-	}
-
+        __HAL_TIM_SET_COMPARE(&manipulator->pen_timer, TIM_CHANNEL_1, PEN_PWM_DOWN);
+    }
 }
 
 
