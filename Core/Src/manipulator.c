@@ -41,8 +41,8 @@ float global_ddq0, global_ddq1;
 // TIM11 Running at 1MHz (1us tick). 50Hz PWM (20000 ticks period).
 // Servo Range: 1000us (1ms) to 2000us (2ms) usually.
 // Adjust these values based on mechanical calibration.
-#define PEN_PWM_UP 1600   // Lifted position
-#define PEN_PWM_DOWN 1100 // Drawing position
+#define PEN_PWM_UP 1800   // Lifted position
+#define PEN_PWM_DOWN 1000 // Drawing position
 
 
 uint32_t global_size;
