@@ -1,5 +1,6 @@
 #include "manipulator.h"
 #include "usart.h" 
+#include <cstdint>
 
 // --- MANIPULATOR GLOBAL VARIABLES ---
 // --- PID PARAMETERS ---
@@ -7,21 +8,25 @@
 #define PID_KP_HOMING_1 3.7f
 #define PID_KI_HOMING_1 0.01f
 #define PID_KD_HOMING_1 0.3f
+#define PID_FF_HOMING_1 0.0f
 
 // Homing - Joint 2
 #define PID_KP_HOMING_2 4.7f
 #define PID_KI_HOMING_2 0.01f
 #define PID_KD_HOMING_2 0.3f
+#define PID_FF_HOMING_2 0.0f
 
 // Tracking - Joint 1
 #define PID_KP_TRACKING_1 0.0f
 #define PID_KI_TRACKING_1 0.0f
 #define PID_KD_TRACKING_1 0.0f
+#define PID_FF_TRACKING_1 1.01f
 
 // Tracking - Joint 2
 #define PID_KP_TRACKING_2 0.0f
 #define PID_KI_TRACKING_2 0.0f
 #define PID_KD_TRACKING_2 0.0f
+#define PID_FF_TRACKING_2 1.025f
 
 float global_degs1, global_degs2;
 int8_t global_dir1, global_dir2;
@@ -49,6 +54,8 @@ void manipulator_init(manipulator_t *manipulator, encoder_t *encoder_1, encoder_
     manipulator->homed = 0;
     manipulator->target_reached_start_tick = 0;
     manipulator->telemetry_ready = 0;
+    manipulator->feedforward_scale_1 = PID_FF_TRACKING_1;
+    manipulator->feedforward_scale_2 = PID_FF_TRACKING_2;
 
     // Default PID Parameters
     pid_controller_t pc1, pc2;
@@ -181,6 +188,9 @@ void homing(manipulator_t *manipulator){
     manipulator->position_controller_2.Ki = PID_KI_HOMING_2;
     manipulator->position_controller_2.Kd = PID_KD_HOMING_2;
 
+    manipulator->feedforward_scale_1 = PID_FF_HOMING_1;
+    manipulator->feedforward_scale_2 = PID_FF_HOMING_2;
+
     manipulator_update_position_controller(manipulator);
     float current_q0, current_q1;
     rbpeek(&manipulator->q0, &current_q0);
@@ -208,6 +218,9 @@ void homing(manipulator_t *manipulator){
         manipulator->position_controller_2.Kp = PID_KP_TRACKING_2;
         manipulator->position_controller_2.Ki = PID_KI_TRACKING_2;
         manipulator->position_controller_2.Kd = PID_KD_TRACKING_2;
+
+        manipulator->feedforward_scale_1 = PID_FF_TRACKING_1;
+        manipulator->feedforward_scale_2 = PID_FF_TRACKING_2;
     }
     
 }
