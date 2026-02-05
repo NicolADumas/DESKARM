@@ -98,6 +98,8 @@ typedef struct {
     volatile uint8_t telemetry_ready;
     float feedforward_scale_1;
     float feedforward_scale_2;
+    float feedforward_acc_scale_1;
+    float feedforward_acc_scale_2;
 } manipulator_t;
 
 #endif /* INC_MANIPULATOR_TYPES_H_ */

@@ -114,8 +114,8 @@ void manipulator_update_position_controller(manipulator_t *manipulator) {
     manipulator->position_controller_2.previous_error = error_q1;
 
     // Calculate control output (desired velocity)
-    float u1 = p_term_q0 + i_term_q0 + d_term_q0 + manipulator->current_setpoint.dq0 * manipulator->feedforward_scale_1; // Use u0 for Joint 0
-    float u2 = p_term_q1 + i_term_q1 + d_term_q1 + manipulator->current_setpoint.dq1 * manipulator->feedforward_scale_2; // Use Joint 1 calculation for Joint 1
+    float u1 = p_term_q0 + i_term_q0 + d_term_q0 + manipulator->current_setpoint.dq0 * manipulator->feedforward_scale_1 + manipulator->current_setpoint.ddq0 * manipulator->feedforward_acc_scale_1; // Use u0 for Joint 0
+    float u2 = p_term_q1 + i_term_q1 + d_term_q1 + manipulator->current_setpoint.dq1 * manipulator->feedforward_scale_2 + manipulator->current_setpoint.ddq1 * manipulator->feedforward_acc_scale_2; // Use Joint 1 calculation for Joint 1
 
     // --- SOFTWARE ENDSTOPS ---
 	// Check limit for motor 1 (q0)
