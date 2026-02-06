@@ -105,6 +105,9 @@ void manipulator_start(manipulator_t *manipulator){
     HAL_TIM_PWM_Start(&manipulator->motor_1, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&manipulator->motor_2, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&manipulator->pen_timer, TIM_CHANNEL_1);
+    
+    // Default Pen Up
+    control_pen(manipulator, PEN_UP);
 }
 
 // --- STATUS READ AND SENSORS ---
@@ -192,6 +195,9 @@ uint8_t homing_check(manipulator_t *manipulator){
 }
 
 void homing(manipulator_t *manipulator){
+    // Ensure Pen is UP during homing
+    control_pen(manipulator, PEN_UP);
+
     // Set Homing PID parameters
     manipulator->position_controller_1.Kp = PID_KP_HOMING_1;
     manipulator->position_controller_1.Ki = PID_KI_HOMING_1;
