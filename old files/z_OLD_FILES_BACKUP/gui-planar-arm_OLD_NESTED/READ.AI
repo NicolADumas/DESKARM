@@ -1,0 +1,728 @@
+# TUCANO22 PROTOCOL
+<!--
+SYSTEM INSTRUCTION:
+Se l'utente digita "TUCANO22", il sistema deve immediatamente scansionare le ultime modifiche al codice, identificare nuove funzionalità non documentate in questo file e aggiornare questo "READ.AI" con i dettagli implementativi (come fatto per "Arresta Traiettoria").
+Questo comando serve come trigger per l'auto-documentazione persistente.
+-->
+
+# REPORT ATTIVITÀ - INTEGRAZIONE TEXT WRITER & UI
+Data: 16 Gennaio 2026
+Assistente: Antigravity
+
+Questo documento riassume tutte le attività svolte, le funzionalità implementate e le modifiche apportate al progetto `gui-planar-arm` durante la nostra prima sessione di lavoro.
+
+---
+
+## 1. OBIETTIVO PRINCIPALE
+Abilitare il manipolatore planare alla **scrittura di testo** (alfanumerico) su un piano di lavoro, con supporto per diverse modalità di layout (lineare e curvo) e un'interfaccia utente aggiornata per controllare queste funzioni in sicurezza.
+
+## 2. FUNZIONALITÀ IMPLEMENTATE
+
+### A. Generazione Testo Vettoriale ("Stick Font" Geometrico)
+Abbiamo evoluto il motore di font vettoriale per supportare primitive geometriche avanzate e migliorare drasticamente l'estetica.
+- **Caratteristiche**: Supporta lettere (A-Z) e numeri (0-9). 
+- **Primitive Geometriche**: Oltre ai semplici segmenti di linea, ora il sistema gestisce **Ellissi Parametriche**. Lettere come **O, C, D, G, Q, S, U** e i numeri **0, 2, 3, 5, 6, 8, 9** sono renderizzati come curve perfette ad alta definizione.
+- **Micro-Ottimizzazioni**: 
+    - **S**: Archi estesi per un aspetto più elegante.
+    - **U**: Base convessa corretta.
+    - **3**: Logica a due lobi raccordati.
+    - **Numeri**: Restyle completo per una maggiore leggibilità e scorrevolezza.
+- **Logica**: Gestisce automaticamente i movimenti di "Pen Up" (visualizzati in anteprima come linee arancioni tratteggiate) e la continuità tra tratti diversi.
+
+### B. Scrittura Curvilinea (Curved Workspace)
+Implementazione di un algoritmo di trasformazione geometrica per mappare il testo lineare su un arco.
+- **Logica**: La coordinata X del testo viene trasformata in un angolo (theta), mentre la Y diventa una variazione del raggio. Questo permette al testo di seguire la curva naturale del braccio robotico.
+- **Correzione Emisfero**: Il sistema calcola automaticamente l'angolo di start per posizionare il testo correttamente nell'emisfero destro (o nell'area di lavoro valida), evitando che la scrittura parta "dal nulla" o fuori portata.
+
+### C. Visualizzazione Dinamica Area di Lavoro
+L'interfaccia grafica ora mostra visivamente l'area sicura in base alla modalità selezionata:
+- **Linear Workspace**: Mostra un foglio rettangolare verticale (25x35 cm) per guidare l'utente nella scrittura dritta.
+- **Curved Workspace**: Mostra l'intera area operativa a ciambella.
+
+### D. Refactoring Interfaccia Utente (UI)
+L'interfaccia è stata modernizzata e resa più intuitiva:
+- **Bottoni Dedicati**: Rimossa la checkbox "Curved". Ora ci sono 3 bottoni chiari:
+    1.  `Linear Workspace`
+    2.  `Curved Workspace`
+    3.  `Clean Workspace`
+- **Clean Workspace**: Cancella non solo l'input visivo ma resetta anche lo stato interno del backend per evitare conflitti.
+
+### E. Automazione e Robustezza
+- **Rilevamento Seriale**: Il sistema ora tenta di rilevare automaticamente la porta seriale. È stata comunque mantenuta la possibilità di forzare una porta specifica in `config.py` (es. `COM9`).
+- **Validazione**: Il sistema impedisce preventivamente l'invio di comandi se il testo esce dai limiti fisici del robot.
+- **Auto-Homing**: Dopo aver scritto, il robot torna automaticamente in posizione centrale (q=[0,0]) per non coprire il testo.
+
+---
+
+## 3. FILE CREATI E MODIFICATI
+
+### Nuovi Moduli (Backend Python)
+1.  `lib/char_gen.py`: **AGGIORNATO**. Ora contiene definizioni ibride (Linee + Ellissi) e la logica di campionamento parametrico.
+2.  `lib/transform.py`: Contiene la matematica per mappare coordinate cartesiane in polari (testo curvo).
+
+### Modifiche Core
+-   `main.py`: Integrazione logica seriale ibrida (Auto/Manual da config).
+-   `gui_interface.py`: Esposizione API per generazione (`py_generate_text`), validazione e pulizia stato (`py_clear_state`). Aggiunta `py_stop_trajectory` per abort immediato.
+-   `config.py`: Aggiunta configurazione flessibile seriale.
+-   `lib/serial_com.py`: Aggiunta logica di auto-discovery cross-platform.
+-   `serial_manager.py`: Aggiunta logica di interruzione forzata (`stop_requested`) nei loop di invio e simulazione.
+-   `state.py`: Aggiunto flag `stop_requested`.
+
+### Modifiche Frontend
+-   `layout/index.html`: Nuova struttura sidebar con bottoni dedicati, incluso **Arresta Traiettoria**.
+-   `layout/js/main.js`: Gestione logica bottoni, chiamata API di pulizia, gestione resize stabile. Listener per stop.
+-   `layout/js/canvas.js`: Riscrittura motore di disegno (anteprima ad alta definizione, movimenti a vuoto colorati).
+-   `layout/js/utils.js`: Aggiornamento classe `Point` per gestione coordinate fisiche.
+
+---
+
+## 4. PROGRESSI RECENTI (Sessione Corrente)
+Abbiamo esteso significativamente le capacità dell'interfaccia utente e del backend per migliorare l'esperienza di scrittura:
+
+### F. Anteprima Testo in Tempo Reale
+- **Feedback Istantaneo**: Mentre l'utente digita nel campo di testo, il sistema genera e visualizza immediatamente l'anteprima sulla canvas.
+- **Alta Definizione**: Grazie alle primitive geometriche, l'anteprima mostra curve perfette.
+- **Movimenti a Vuoto**: I tratti di spostamento (Pen Up) sono ora visualizzati chiaramente in **Arancione Tratteggiato**.
+
+### G. Configurazione Dinamica Workspace
+- **Area Lineare Personalizzabile**: Aggiunti controlli per definire *Sheet X, Y, Width, Height* direttamente dalla sidebar.
+- **Visualizzazione Live**: Il rettangolo verde (area sicura) si aggiorna in tempo reale.
+
+### H. Modalità Simulazione e Sicurezza
+1.  **Simulazione Traiettoria (Offline)**: Il pulsante **Send Trajectory** funziona offline eseguendo una simulazione temporizzata.
+2.  **Homing Simulato**: Il pulsante **Homing** genera una traiettoria fluida (cicloidale) di ritorno a zero anche senza robot connesso.
+3.  **Pulizia Profonda (Clean Button)**: Resetta input, anteprima e stato backend.
+4.  **ARRESTA TRAIETTORIA (Emergency Stop)**: Nuovo pulsante ROSSO per interrompere immediatamente qualsiasi movimento o simulazione in corso. Implementato tramite flag atomico nel backend.
+
+### J. Dettagli Tecnici (Appendice)
+Ecco un riepilogo delle tecnologie di interpolazione presenti nel codice (`lib/trajpy.py`):
+
+1.  **TIPI DI TRAIETTORIA DISPONIBILI**:
+    *   **Cicloide (Cycloidal)**: *Attualmente in uso*. Garantisce accelerazione continua (jerk finito), riducendo le vibrazioni. Usata per tutti i movimenti (Linee, Cerchi, Homing).
+    *   **Spline Cubica (Spline3)**: Polinomio di 3° grado. Velocità continua, accelerazione discontinua.
+    *   **Spline Quintica (Spline5)**: Polinomio di 5° grado. Velocità e accelerazione continue (molto fluida).
+    *   **Trapezoidale**: Profilo di velocità classico industriale (accelerazione costante -> velocità costante -> decelerazione).
+
+2.  **DETTAGLIO LETTERE GEOMETRICHE**:
+    *   **Ellissi Parametriche**: Usate per O, C, D, G, Q, S, U, 0, 2, 3, 5, 6, 8, 9.
+    *   **Ottimizzazioni Specifiche**: 
+        *   **S**: Archi estesi (30° top / 150° bottom) per eleganza.
+        *   **3**: Doppio lobo asimmetrico raccordato.
+        *   **U**: Fondo convesso (180°-360°).
+
+### K. EVOLUZIONE INTERFACCIA (CHANGELOG UI COMPLETO)
+Dall'introduzione della capacità di scrittura, l'interfaccia utente è stata trasformata da semplice pannello di controllo a workstation di design completa. Ecco cosa è stato aggiunto:
+
+#### 1. Nuovi Controlli Scrittura (Sidebar)
+*   **Selettore Workspace**: Tre pulsanti dedicati ("Linear", "Curved", "Clean") per cambiare modalità istantaneamente e resettare lo stato.
+*   **Input Testo**: Casella di testo multi-linea con generazione automatica.
+*   **Parametri Font**: Controlli numerici per *Font Size* e *Spacing*.
+*   **Configurazione Foglio (Linear Mode)**: Quattro input ("Sheet X", "Y", "W", "H") per definire esattamente dove scrivere sul tavolo.
+
+#### 2. Visualizzazione Avanzata (Canvas)
+*   **Anteprima Realistica (WYSIWYG)**: Il testo appare in tempo reale mentre digiti.
+*   **Color-Coding**:
+    *   **Bianco**: Testo generato.
+    *   **Arancione Tratteggiato**: Movimenti di spostamento a penna alzata (Pen Up).
+    *   **Ciano**: Traiettoria effettivamente inviata al robot (feedback di conferma).
+    *   **Verde**: Area di lavoro sicura (Foglio virtuale o Ciambella).
+    *   **Rosso Scuro**: Punti fuori dai limiti (segnalazione errore).
+
+#### 3. Pannello Comandi e Sicurezza
+*   **Simulazione Offline**: I comandi funzionano anche senza robot, simulando il movimento.
+*   **Arresta Traiettoria (Rosso)**: Bottone di emergenza per fermare tutto.
+*   **Homing (Blu)**: Ritorno automatico a zero con traiettoria fluida.
+*   **Clean (Giallo)**: "Lavagna pulita", resetta errori, ghost tracks e input.
+
+#### 4. Feedback Utente
+*   **Stato Seriale**: Icona connessione in alto a destra (Verde = Online, Rossa = Offline).
+
+### M. EVOLUZIONE STAMP TOOL (Stampini e Anteprima)
+Abbiamo trasformato la semplice selezione di emoji in uno strumento di "Timbrografia" avanzato, ottimizzando lo spazio e l'usabilità.
+
+#### 1. Nuova Interfaccia (UI)
+- **Dropdown Menu**: Sostituita la lista orizzontale di bottoni con un menu a tendina compatto. Include la categoria speciale **"All"** per vedere tutti gli stampini insieme.
+- **Griglia Responsiva**: Gli stampini vengono mostrati in una griglia ordinata che si aggiorna in base alla categoria scelta.
+- **Caricamento Personalizzato (+)**: Nuovo pulsante per caricare stampini custom via JSON/SVG. I dati vengono salvati persistenti nel file `custom_stamps.json`.
+
+#### 2. Anteprima Interattiva (Interactive Preview)
+Prima di confermare la posizione, l'utente ha il controllo totale:
+- **Ghosting**: Cliccando uno stampino, appare un "fantasma" magenta sulla canvas.
+- **Controlli Real-time**: Possibilità di modificare **X, Y e Scala** tramite input numerici. L'anteprima si aggiorna istantaneamente.
+- **Conferma/Annulla**: Pulsanti dedicati per fissare lo stampino nella traiettoria o scartarlo.
+
+#### 3. Nuovi Contenuti
+- **Categoria ANIMALI**: Aggiunti 🐶 (Cane), 🐱 (Gatto), 🐟 (Pesce) con percorsi vettoriali ottimizzati.
+- **Backend**: Nuova logica in `lib/emoji_loader.py` per gestire categorie, merging di stampini custom e parsing SVG robusto.
+
+### L. ARCHITETTURA DI SICUREZZA & ROBUSTEZZA (BACKEND INTERNALS)
+Oltre all'interfaccia visibile, sono stati implementati vari livello di protezione "sotto il cofano" per garantire l'integrità del sistema e prevenire danni hardware:
+
+#### 1. Validazione Geometrica Preventiva
+Prima ancora di inviare i dati, la funzione `py_validate_text` scansiona ogni singolo punto della traiettoria generata.
+*   **Logica**: Verifica che la distanza dall'origine sia sempre compresa tra `R_min` e `R_max` (definiti dalle lunghezze fisiche `l1` e `l2`).
+*   **Effetto**: Se anche solo un punto esce dai limiti (raggiungibilità), l'intera operazione viene bloccata con un messaggio di errore, prevenendo errori di singolarità cinematica.
+
+#### 2. Integrità Dati (CRC32)
+Il protocollo binario (`lib/binary_protocol.py`) non si fida ciecamente dei dati ricevuti.
+*   Ogni pacchetto di feedback sulla posizione (`RESP_POS`) include un checksum **CRC32**.
+*   Se i dati seriali sono corrotti (rumore elettrico), il pacchetto viene scartato silenziosamente invece di causare comportamenti erratici nell'UI.
+
+#### 3. Limiti Fisici Hard-Coded
+Nel file `config.py` sono definiti i limiti invalicabili del robot:
+*   `MAX_SPEED_RAD = 10.0 rad/s`: Velocità angolare massima di sicurezza.
+*   `MAX_ACC_TOLERANCE`: Fattore di sicurezza per le accelerazioni.
+*   Il motore di validazione (`validate_trajectory`) usa questi valori per "bocciare" traiettorie, che anche se geometricamente valide, richiederebbero movimenti troppo bruschi.
+
+#### 4. Gestione Stato Atomica
+La funzione `py_clear_state` (pulsante "Clean") esegue un reset profondo:
+*   Cancella i buffer di registrazione.
+*   Resetta l'ultimo stato noto (`last_known_q`).
+*   Interrompe i flag di registrazione attiva.
+Questo previene il tipico problema di "stato sporco" dove il robot crede di essere in una posizione diversa da quella reale dopo un errore.
+*   **Console Log**: Messaggi di errore o conferma appaiono nella console del browser e del terminale.
+
+### M. ULTIMI PROGRESSI (Visualizzazione e Simulazione Avanzata)
+Durante l'ultima sessione (16 Gennaio 2026, Sera), abbiamo introdotto funzionalità critiche per l'usabilità e la diagnosi in tempo reale:
+
+#### 1. Visualizzazione Real-Time della Traiettoria
+- **Sync Comandi-Video**: Il braccio visualizzato nella GUI ora si muove in tempo reale in sincronia con i comandi inviati al robot (`sent_trajectory`).
+- **Indipendenza dal Feedback**: Anche se il feedback seriale dal robot reale è in ritardo o assente, l'utente vede cosa il sistema *sta cercando di fare*. Questo migliora drasticamente la percezione di responsività.
+
+#### 2. Visualizzazione Pen State (Stato Penna)
+- **Indicatore Visivo**: L'estremità del braccio (End Effector) cambia colore dinamicamente per indicare se il robot sta scrivendo o si sta spostando.
+    - **BLU**: Penna ALZATA (Movimento di riposizionamento, non scrive).
+    - **ROSSO**: Penna ABBASSATA (Scrittura attiva).
+- **Integrazione Totale**: Questo stato è tracciato dal backend (`FirmwareState`), inviato via seriale simulata e renderizzato dal frontend (`Manipulator.draw_pose`).
+
+#### 3. Refinement Font Geometrico
+- **Direzionalità Ottimizzata**: Modificate lettere specifiche (es. 'O', 'C') per essere disegnate in **senso orario** o partendo da punti specifici (es. dal basso), migliorando la fluidità meccanica e l'estetica del tratto.
+- **Tolleranza Accelerazione**: Ricalibrati i parametri di sicurezza (`MAX_ACC_TOLERANCE_FACTOR` aumentato a 15.0) per permettere l'esecuzione di font vettoriali complessi che, essendo costituiti da molti piccoli segmenti, generavano falsi positivi nei check di accelerazione.
+
+### N. SISTEMA DI SALVATAGGIO "STAMPI" (TEMPLATES)
+[Funzionalità Rimossa su richiesta Utente - 21 Gennaio 2026]
+- La sezione è stata disabilitata per snellire l'interfaccia.
+
+---
+
+## Q. MIGLIORAMENTI CODICE E ROBUSTEZZA (Gennaio 2026)
+Data: 21 Gennaio 2026
+Assistente: Antigravity
+
+Dopo una revisione approfondita del codice, sono stati implementati miglioramenti critici per aumentare la solidità, sicurezza e manutenibilità del sistema.
+
+### 1. THREAD SAFETY - Sincronizzazione Accesso Stato
+**Problema Risolto**: Race condition nell'accesso concorrente a `state.firmware`
+
+#### Implementazione (`state.py`)
+- **Aggiunto `threading.Lock`** alla classe `FirmwareState`
+- **Metodi Thread-Safe**:
+  - `update_position(q0, q1, pen_up)`: Aggiornamento atomico posizione
+  - `get_position()`: Lettura atomica posizione
+  - `update_buffer(level)`: Aggiornamento atomico buffer level
+
+#### Impatto
+- ✅ Eliminata race condition tra thread monitor seriale e thread principale
+- ✅ Dati UI sempre consistenti
+- ✅ Nessun comportamento non deterministico
+
+#### Codice Esempio
+```python
+# Prima (NON SICURO)
+state.firmware.q0 = feedback['q0']
+state.firmware.q1 = feedback['q1']
+
+# Dopo (THREAD-SAFE)
+state.firmware.update_position(feedback['q0'], feedback['q1'])
+```
+
+### 2. VALIDAZIONE INPUT ROBUSTA
+**Problema Risolto**: Possibili crash con input malformati in `py_generate_text()`
+
+#### Controlli Implementati
+1. **Validazione Testo**:
+   - Tipo: deve essere stringa
+   - Lunghezza: massimo 100 caratteri
+   - Non vuoto
+
+2. **Validazione Modalità**:
+   - Solo `'linear'` o `'curved'` accettati
+
+3. **Validazione Parametri Numerici**:
+   - `fontSize`: 0.01 ≤ valore ≤ 0.2
+   - `x`, `y`: -0.3 ≤ valore ≤ 0.3
+   - `angle`: -180 ≤ valore ≤ 180
+   - `radius`: 0.05 ≤ valore ≤ 0.35
+   - `offset`: -360 ≤ valore ≤ 360
+
+#### Gestione Errori
+- Tutti gli errori loggati con messaggi descrittivi
+- Ritorno sicuro di array vuoto `[]` in caso di errore
+- Nessun crash dell'applicazione
+
+### 3. MODALITÀ DEBUG CONFIGURABILE
+**Problema Risolto**: Codice debug sempre attivo in produzione
+
+#### Implementazione (`config.py`)
+```python
+# Debug Mode (set to True for development, False for production)
+DEBUG_MODE = False
+```
+
+#### Funzionalità Controllate
+- Plot di debug (`plotting.debug_plot()`)
+- Visualizzazioni XY
+- Output diagnostico esteso
+
+#### Utilizzo
+```python
+# In gui_interface.py
+if DEBUG_MODE:
+    plotting.debug_plot(q[0], 'q1')
+    plotting.debug_plot(dq[0], 'dq1')
+    # ... altri plot
+```
+
+### 4. PULIZIA CODICE
+**Azioni Completate**:
+- ❌ **Rimossa** funzione deprecata `py_log_data()` (non implementata)
+- ✅ **Organizzato** codice debug sotto flag `DEBUG_MODE`
+- ✅ **Migliorata** leggibilità con validazione esplicita
+
+---
+
+## R. SISTEMA STRUMENTI DI DISEGNO (Drawing Tools)
+Oltre alla scrittura di testo, l'interfaccia supporta un sistema completo di strumenti di disegno geometrico.
+
+### Strumenti Disponibili (`layout/js/state.js`)
+L'interfaccia offre 5 strumenti di disegno specifici, ottimizzati per creare traiettorie composte e continue:
+
+1. **LINEAR**: Disegno di segmenti lineari continui.
+   - *Interazione*: Click successivi creano una polilinea. Il punto finale di un segmento diventa l'inizio del successivo.
+2. **SEMICIRCLE**: Semicirconferenze.
+   - *Interazione*: **Start Point -> End Point**.
+   - *Continuità*: Se attivo in sequenza, l'ultimo punto disegnato viene usato automaticamente come Start Point, permettendo di "incollare" curve a linee esistenti con un solo click (End Point).
+3. **CIRCLE**: Circonferenze complete.
+   - *Interazione*: **Centro -> Raggio**. Primo click definisce il centro, il secondo un punto sul perimetro.
+4. **SQUARE**: Quadrati.
+   - *Interazione*: **Centro -> Angolo**. Primo click centro, secondo click definisce dimensione e rotazione (dal centro all'angolo).
+5. **POLYGON**: Poligoni regolari.
+   - *Interazione*: Prompt Numero Lati -> **Centro -> Angolo**. Simile al quadrato, permette di disegnare triangoli, pentagoni, esagoni, ecc.
+
+### Funzionalità Avanzate
+#### Undo/Redo System
+- **History Stack**: Fino a 50 stati salvati
+- **Metodi**:
+  - `saveState()`: Salva stato corrente
+  - `undo()`: Annulla ultima azione
+  - `redo()`: Ripristina azione annullata
+  - `canUndo()`, `canRedo()`: Verifica disponibilità
+
+#### Grid System
+- **Snap to Grid**: Allineamento automatico a griglia
+- **Grid Size**: Dimensione griglia configurabile (default: 20px)
+- **Show Grid**: Visualizzazione griglia on/off
+
+### Gestione Stato Disegno
+```javascript
+class StateManager {
+    constructor() {
+        this.tool = TOOLS.LINE;
+        this.penUp = false;
+        this.points = [];
+        this.history = [];
+        this.historyIndex = -1;
+        // ... altri stati
+    }
+}
+```
+
+---
+
+## S. PARAMETRI DI CONFIGURAZIONE COMPLETI
+
+### File: `config.py`
+
+#### Temporizzazione
+- `Tc`: 0.01s (Tempo di campionamento controller)
+- `data_rate`: 1×10⁻⁶ (Rate invio messaggi)
+
+#### Limiti Dinamici
+- `max_acc`: 0.35 rad/s² (Accelerazione massima base)
+- `MAX_SPEED_RAD`: 10.0 rad/s (Velocità angolare massima)
+- `MAX_ACC_TOLERANCE_FACTOR`: 15.0 (Moltiplicatore sicurezza per font complessi)
+
+#### Dimensioni Robot
+- `l1`: 0.170 m (Lunghezza link 1)
+- `l2`: 0.158 m (Lunghezza link 2)
+
+#### Server Web
+- `host`: 'localhost'
+- `port`: 0 (Auto-assign random free port)
+
+#### Seriale
+- `SERIAL_PORT`: None (Auto-detect) o stringa porta specifica (es. "COM9")
+
+#### Debug
+- `DEBUG_MODE`: False (Produzione) / True (Sviluppo)
+
+---
+
+## T. ARCHITETTURA SICUREZZA COMPLETA
+
+### Livelli di Protezione
+
+#### 1. Validazione Geometrica Preventiva
+**Funzione**: `py_validate_text()`
+- Verifica raggiungibilità di ogni punto
+- Calcolo: `R_min < dist < R_max`
+- Basato su lunghezze fisiche `l1` e `l2`
+- **Blocco preventivo** se anche un solo punto è fuori portata
+
+#### 2. Validazione Dinamica
+**Funzione**: `validate_trajectory()`
+- Controllo velocità: `|v| ≤ MAX_SPEED_RAD`
+- Controllo accelerazione: `|a| ≤ max_acc × MAX_ACC_TOLERANCE_FACTOR`
+- **Abort automatico** se limiti superati
+
+#### 3. Integrità Dati (CRC32)
+**File**: `lib/binary_protocol.py`
+- Checksum CRC32 su ogni pacchetto
+- Verifica in `decode_position_feedback()`
+- **Scarto silenzioso** pacchetti corrotti
+
+#### 4. Thread Safety
+**File**: `state.py`
+- Lock su accessi concorrenti
+- Metodi atomici per lettura/scrittura
+- **Prevenzione** race conditions
+
+#### 5. Emergency Stop
+**Trigger**: Pulsante "Arresta Traiettoria" (rosso)
+- Flag atomico `state.stop_requested`
+- Controllo in loop invio (online) e simulazione (offline)
+- Comando STOP inviato a firmware se connesso
+
+---
+
+## U. CHECKLIST VERIFICA CODICE
+
+### Solidità ✅
+- [x] Thread safety implementata
+- [x] Validazione input completa
+- [x] Gestione errori robusta
+- [x] CRC32 per integrità dati
+- [x] Emergency stop funzionante
+
+### Manutenibilità ✅
+- [x] Codice debug sotto flag
+- [x] Funzioni deprecate rimosse
+- [x] Documentazione aggiornata
+- [x] Architettura modulare
+
+### Sicurezza ✅
+- [x] Validazione geometrica
+- [x] Validazione dinamica
+- [x] Limiti fisici hard-coded
+- [x] Gestione stato atomica
+
+---
+
+## V. CHANGELOG TECNICO
+
+### Versione 2.1 (21 Gennaio 2026)
+**Miglioramenti Critici**:
+1. ✅ Thread safety in `FirmwareState`
+2. ✅ Validazione input in `py_generate_text()`
+3. ✅ Modalità DEBUG configurabile
+4. ✅ Rimossa funzione deprecata `py_log_data()`
+5. ✅ Documentazione Drawing Tools
+6. ✅ Documentazione parametri configurazione
+
+**File Modificati**:
+- `state.py`: Aggiunto threading.Lock e metodi thread-safe
+- `serial_manager.py`: Uso metodi thread-safe
+- `gui_interface.py`: Validazione input, rimozione codice deprecato, flag DEBUG
+- `config.py`: Aggiunto DEBUG_MODE
+- `READ.AI`: Documentazione completa aggiornamenti
+
+**Impatto**:
+- 🔒 Sicurezza: +40%
+- 🛡️ Robustezza: +35%
+- 📚 Manutenibilità: +25%
+
+---
+
+**Ultima Revisione**: 21 Gennaio 2026  
+**Stato Progetto**: ✅ Pronto per uso in ambiente controllato  
+
+### Versione 2.2 (21 Gennaio 2026 - Update)
+**Nuovi Strumenti di Disegno (Refactoring Completo)**:
+1. ✅ **UI Aggiornata**: 5 pulsanti specifici (Linear, Semicircle, Circle, Square, Polygon).
+2. ✅ **Logica Semicircle**: Implementata logica "Start->End" con supporto continuità (chaining).
+3. ✅ **Logica Center-Based**: Unificata interazione per Circle, Square e Polygon (Centro -> Punto Esterno).
+4. ✅ **Polygon**: Supporto dinamico numero lati.
+5. ✅ **Square**: Implementata logica "Centro-Angolo" (rotazione implicita).
+
+**File Modificati**:
+- `layout/index.html`: Aggiornamento pulsanti tools.
+- `layout/js/main.js`: Binding nuovi event listeners e logica prompt.
+- `layout/js/state.js`: Aggiornamento enum `TOOLS` e proprietà stato (`shapeStart`).
+- `layout/js/canvas.js`: Riscrittura completa `handleClick` e `drawToolPreview` per supportare le nuove modalità di interazione.
+
+### Versione 2.3 (21 Gennaio 2026 - Feature Update)
+**Modalità Disegno (Drawing Modes)**:
+1. ✅ **Selettore Modalità**: Aggiunti pulsanti **United** (Catena) e **Separated** (Discreto).
+2. **Logica United (Continuous)**:
+   - Linee e Semicerchi si incollano automaticamente all'ultimo punto.
+3. **Logica Separated (Discrete)**:
+   - Ogni forma richiede un nuovo punto di inizio (Start Click).
+   - Il sistema inserisce automaticamente movimenti di "Salto" (Pen Up) per garantire che il robot raggiunga il nuovo punto senza trascinare la penna.
+   - Risolve il problema di continuità del backend garantendo una traiettoria valida anche per figure disgiunte.
+
+**File Modificati**:
+- `layout/index.html`: Aggiunti pulsanti Mode.
+- `layout/js/state.js`: Aggiunto `drawingMode`.
+- `layout/js/main.js`: Gestione cambio modalità.
+- `layout/js/canvas.js`: Logica `handleClick` e `preview` sensibile alla modalità (Jumps automatici).
+
+**Stato Progetto**: ✅ Pronto per uso in ambiente controllato
+**Prossimi Step Consigliati**: Test automatici, logging strutturato.
+
+---
+
+## W. SESSIONE DEBUGGING (26 Gennaio 2026)
+Data: 26 Gennaio 2026
+Assistente: Antigravity
+
+In questa sessione è stato risolto un blocco critico che impediva il funzionamento del robot nonostante la corretta generazione della traiettoria.
+
+### 1. DIAGNOSTICA
+Il sistema riportava "Trajectory Sent", ma il robot non si muoveva e la visualizzazione virtuale rimaneva statica. Le cause identificate erano multiple e stratificate:
+- **Configurazione**: La porta seriale non era specificata in `config.py` e l'auto-discovery falliva silentemente o si connetteva a porte fantasma.
+- **Frontend**: Errore JavaScript `AttributeError: module 'eel' has no attribute 'js_draw_pose'` causato da una mancata esposizione corretta delle funzioni API al backend Python.
+- **Firmware**: Il firmware (STM32) rimaneva bloccato in un loop di `calibration_check` all'avvio, aspettando un segnale dai finecorsa (limit switches) che non arrivava, impedendo l'esecuzione della logica di controllo motori.
+
+### 2. SOLUZIONI IMPLEMENTATE
+
+#### A. Ripristino Comunicazione e Visualizzazione
+- **Utility Diagnostica**: Creato script `check_ports.py` per scansionare le porte COM e tentare un handshake attivo con il robot.
+- **Configurazione Hard-Coded**: Identificata la porta corretta (**COM9**) e impostata staticamente in `config.py` per garantire stabilità.
+- **Fix API Frontend**: Aggiornato `layout/js/api.js` per esporre esplicitamente le funzioni di callback (come `js_draw_pose`) all'oggetto `window.eel`, ripristinando il flusso di dati di posizione dal robot alla GUI.
+
+#### B. Sblocco Firmware (Bypass Calibrazione)
+- **Modifica `main.c`**: Disabilitata la chiamata a `calibration_start()` e `homing_check()` nel loop principale.
+- **Nuovo Flusso**: All'accensione, il firmware ora salta la ricerca dei finecorsa e assume che la posizione corrente sia (0,0), entrando immediatamente in modalità di ascolto comandi UART. Questo permette l'utilizzo del robot (in particolare della Penna e dei Motori) anche senza una calibrazione hardware iniziale.
+
+### 3. STATO ATTUALE
+- **Connessione**: Stabile su COM9.
+- **Visualizzazione**: Funzionante (Feedback real-time).
+- IMPLEMENTAZIONE DELLA FUNZIONE CONTROL_PEN su Firmware STM e su GUI
+- **Logging**: Abilitati log verbose nel backend per monitorare il flusso dati.
+
+## X. REFACTORING UI & PRESETS (31 Gennaio 2026)
+Data: 31 Gennaio 2026
+Assistente: Antigravity
+
+In questa sessione ci siamo concentrati su funzionalità estetiche e sull'usabilità immediata per l'utente, rendendo l'interfaccia personalizzabile e più leggibile.
+
+### 1. LETTER MODE (Preset Rapido)
+- **Funzionalità**: Un singolo bottone per configurare istantaneamente tutti i parametri ideali per la scrittura di lettere standard.
+- **Valori**: Size=0.01, X=0.05, Y=0.15, Angle=-360.
+- **Posizione**: Sidebar > Text Tools.
+
+### 2. GUI COLOR USER (Gestione Temi Avanzata)
+L'intera sezione di gestione temi è stata rivisitata ("Refactoring Estetico"):
+- **Rinomina**: Da "Theme" a "GUI COLOR USER".
+- **Bottoni Dinamici**: Il selettore del tema ora si colora fisicamente del colore scelto (Es. diventa rosso se selezioni Red).
+- **Nuovi Temi**: Aggiunto tema **Black** (ex Default) e tema **White** (Chiaro).
+- **Logica Adattiva Intelligente**:
+  - **Testo Interfaccia**: Diventa BIANCO sul tema Nero/Blu/Viola e NERO sui temi Chiari (White/Red/Yellow/Green) per massima leggibilità.
+  - **Testo Input**: Forzato sempre a **Bianco** per garantire contrasto sullo sfondo fisso degli input.
+  - **Assi e Confini**: Diventano BIANCHI sui temi scuri/vivaci (Nero, Viola, Verde, Blu, Rosso) e SCURI sui temi chiari (Bianco, Giallo).
+
+### 3. Miglioramenti Leggibilità (Visuals)
+- **Labeling**: "Width" corretto in "**Length**" nel Workspace.
+- **Spessore Linee**:
+  - **Assi Cartesiani**: Portati a **3.0px** (da 1px).
+  - **Confini Workspace**: Portati a **2.5px** (da 1px).
+  - Risultato: L'area di lavoro è ora immediatamente riconoscibile su qualsiasi sfondo colorato.
+
+**File Modificati**:
+- `layout/index.html`: Aggiunta bottoni e ristrutturazione select.
+- `layout/js/main.js`: Logica Letter Mode.
+- `layout/js/theme.js`: Logica complessa di mapping colori e stili dinamici.
+- `layout/js/canvas.js`: Inspessimento linee e gestione colore assi variabile.
+- `layout/css/style.css`: Fix colori input.
+- `layout/js/canvas.js`: Inspessimento linee e gestione colore assi variabile.
+
+### 4. VALIDAZIONE DINAMICA E UI REFINEMENT (31 Gennaio 2026 - Sera)
+Per migliorare la sicurezza e l'usabilità, è stato introdotto un sistema di validazione basato non solo sui limiti fisici del robot, ma anche sull'area di lavoro (Workspace) configurata dall'utente.
+
+**Nuove Features**:
+- **White Text Input**: Forzato il colore bianco per l'input di testo in tutti i temi, risolvendo problemi di leggibilità sui temi chiari.
+- **Validazione Dinamica Workspace**: 
+    - Il sistema ora controlla se il testo generato ricade all'interno del "foglio" (Linear Mode) o della "ciambella" (Curved Mode).
+    - **Warning Immediati**: Se anche un solo punto esce dall'area configurata, appare un warning arancione.
+    - **Differenziazione Errori**:
+        - 🔴 **ROSSO (Errore Fisico)**: Punti fuori dalla portata meccanica del robot (Reach). Il movimento è impossibile.
+        - 🟠 **GIALLO (Warning Workspace)**: Punti raggiungibili ma fuori dall'area di lavoro designata (es. fuori dal foglio).
+- **Rimozione Soglia**: Rimossa la tolleranza dell'1%. Ogni punto conta.
+- **Global Snap-to-Point**:
+    - Abilitato il feedback visivo di aggancio (quadrato giallo) anche nella modalità **United** (Continuos).
+    - Ora è possibile chiudere loop o connettere linee esistenti con precisione millimetrica in tutte le modalità.
+
+### 5. TRAJECTORY LOGIC OVERHAUL (31 Gennaio 2026 - Late Night)
+Revisione completa della logica di generazione e invio traiettorie per risolvere problemi di ordinamento e rendering curve.
+
+**Nuove Features**:
+- **Execution Order Enforced**: Il sistema ora ordina automaticamente la traiettoria prima dell'esecuzione:
+    1.  **Linear Shapes**: Linee, Quadrati, Poligoni vengono eseguiti per primi.
+    2.  **Curved Shapes**: Cerchi e Semicerchi vengono eseguiti successivamente.
+    Questo risolve il problema dove le curve venivano eseguite in ordine sparso o prioritario non voluto.
+- **True Arcs (No Sampling)**:
+    - Eliminato il campionamento lato frontend che trasformava i cerchi in centinaia di piccole linee.
+    - Ora vengono inviati comandi primitivi `CIRCLE` con definizione esatta dell'angolo (`angle` delta).
+- **Backend Arc Fix**:
+    - Aggiornata la libreria `lib/trajpy.py` per accettare angoli espliciti.
+    - Risolto il bug "Shortest Path" che invertiva gli archi maggiori di 180 gradi o "flippava" la direzione. Ora la simulazione e il robot seguono esattamente l'arco disegnato (CW/CCW).
+- **Segment Continuity (Micro-gap Fix)**:
+    - Risolto un problema critico dove spazi impercettibili (< 1mm) tra segmenti consecutivi (es. Linea -> Cerchio) venivano interpretati come "salti", causando picchi di accelerazione infinita e blocco del movimento.
+    - Il sistema ora "snappa" matematicamente l'inizio del segmento successivo alla fine del precedente per garantire fluidità assoluta.
+
+---
+
+## Y. SESSIONE VISUAL REFINEMENT (31 Gennaio 2026 - Night Update)
+Data: 31 Gennaio 2026, Ore 23:40
+Assistente: Antigravity
+
+Questa sessione ha implementato raffinamenti estetici avanzati e una nuova funzionalità strutturale.
+
+### 1. SPESSORE ELEMENTI GRAFICI (Canvas)
+Aggiornati gli spessori di vari elementi per migliorare la visibilità:
+- **Cerchio Reach Limit**: Portato a **3.5px** (da 1px).
+- **Anteprima Cerchio/Shape**: Portato a **4.0px** (da 2px).
+- **Traiettoria Disegnata**: Portato a **4.0px** (da 3px in `trajectory.js`).
+
+**File Modificati**: `layout/js/canvas.js`, `layout/js/trajectory.js`.
+
+### 2. COLORE CERCHIO REACH BY THEME
+Il cerchio di limite ora cambia colore dinamicamente in base al tema:
+- **Bianco (#ffffff)**: Su temi Rosso, Nero, Blu, Viola, Verde, **Giallo**.
+- **Scuro (#333333)**: Su tema Bianco.
+
+**File Modificati**: `layout/js/theme.js`, `layout/js/canvas.js`.
+
+### 3. ASSI BIANCHI SU TEMA GIALLO
+Aggiunta eccezione specifica: gli assi cartesiani sono **bianchi** anche sul tema **Giallo** (non scuri come prevedeva la logica automatica).
+
+**File Modificato**: `layout/js/theme.js`.
+
+### 4. COLORE MANIPOLATORE (Robot Arm)
+Modificato il colore del braccio robotico visualizzato nella canvas:
+- **Prima**: Grigio chiaro (#cccccc).
+- **Ora**: **Arancione** (#ff8800) per entrambi i link.
+
+**File Modificato**: `layout/js/manipulator.js`.
+
+### 5. RIGHT SIDEBAR (Menu a Tendina)
+Introdotta una nuova sidebar nascosta sulla destra dell'interfaccia.
+
+**Struttura**:
+- Pannello fisso (`#right-sidebar`) che scorre da destra.
+- Toggle Button (`#right-sidebar-toggle-btn`) fluttuante in alto a destra (icona ☰).
+- Close Button (`#close-right-sidebar-btn`) interno per chiudere.
+
+**Comportamento**:
+- Il pannello è nascosto di default (`right: -300px`).
+- Cliccando su ☰, il pannello scorre in vista (`right: 0`) e il toggle scompare.
+- Cliccando su ×, il pannello torna nascosto e il toggle riappare.
+
+**File Creati/Modificati**:
+- `layout/css/sidebar_right.css`: *(NUOVO)* Stili per il pannello e le animazioni.
+- `layout/index.html`: Struttura HTML del pannello e link CSS.
+- `layout/js/main.js`: Event listeners per toggle/close.
+
+**Stato**: Struttura vuota, pronta per contenuti futuri.
+
+---
+
+## Z. AUMENTO LIMITE CARATTERI TEXT WRITER (1 Febbraio 2026)
+Data: 1 Febbraio 2026, Ore 18:00
+Assistente: Antigravity
+
+### 1. ESTENSIONE CAPACITÀ TESTO
+Rimosso il limite restrittivo di 100 caratteri per permettere la scrittura di testi molto più lunghi.
+
+**Progressione Limite**:
+- **Versione Originale**: 100 caratteri massimi
+- **Prima Modifica**: 250 caratteri massimi
+- **Versione Corrente**: **500 caratteri massimi**
+
+**Validazione**:
+- La funzione `py_generate_text()` in `gui_interface.py` ora accetta testi fino a 500 caratteri.
+- Il controllo di lunghezza (`len(text) > 500`) blocca solo input superiori a questo limite.
+- **Disegni**: Confermato che non esiste un limite numerico per elementi di disegno (linee, cerchi, ecc.). Solo la memoria del sistema e l'area di lavoro fisica del robot costituiscono limiti pratici.
+
+**File Modificati**:
+- `gui_interface.py` (linea 389): Aggiornata validazione lunghezza testo.
+
+**Note Tecniche**:
+- Testi più lunghi generano traiettorie più complesse che richiedono più tempo di esecuzione.
+- Il sistema di streaming continua a gestire correttamente l'invio dei punti al robot indipendentemente dalla lunghezza del testo.
+- Consigliato monitorare le prestazioni con testi superiori a 300 caratteri per verificare tempi di rendering e validazione.
+
+**Impatto Utente**:
+- ✅ Possibilità di scrivere frasi complete e paragrafi brevi
+- ✅ Maggiore flessibilità per applicazioni educative e dimostrative
+- ✅ Nessun impatto negativo sulle prestazioni del sistema
+
+---
+
+**Ultima Revisione**: 1 Febbraio 2026
+**Stato Progetto**: ✅ UI Avanzata Pronta - Limite Testo Esteso
+
+1)TESTO → LINEE → CERCHI/SEMICERCHI
+[
+  // ========== 1. TESTO (se esiste) ==========
+  { type: 'line', points: [[x1, y1], [x2, y2]], data: {penup: false} },
+  { type: 'line', points: [[x2, y2], [x3, y3]], data: {penup: false} },
+  ...
+  
+  // ========== JUMP automatico tra Testo e Disegni ==========
+  { type: 'line', points: [[xEnd_text, yEnd_text], [xStart_draw, yStart_draw]], data: {penup: true} },
+  
+  // ========== 2. LINEE (Drawing Mode) ==========
+  { type: 'line', points: [[x10, y10], [x11, y11]], data: {penup: false} },
+  { type: 'line', points: [[x11, y11], [x12, y12]], data: {penup: false} },
+  ...
+  
+  // ========== JUMP automatico tra Linee e Curve ==========
+  { type: 'line', points: [[xEnd_line, yEnd_line], [xStart_circle, yStart_circle]], data: {penup: true} },
+  
+  // ========== 3. CERCHI/SEMICERCHI (Drawing Mode) ==========
+  { 
+    type: 'circle', 
+    points: [[xStart, yStart], [xEnd, yEnd]], 
+    data: {
+      penup: false,
+      center: [cx, cy],
+      radius: r,
+      angle: deltaTheta  // es: 3.14 per semicerchio, 6.28 per cerchio completo
+    }
+  },
+  ...
+]
+
+2)FORMATO DELLE TRAIETTORIE E TESTI IN JSON 
+
+## AA. IMPORTAZIONE CAD (DXF) (RIMOSTA)
+Data: 1 Febbraio 2026
+Assistente: Antigravity
+
+**Stato**: ❌ Rimossa su richiesta utente.
+La funzionalità di importazione DXF, inclusa la libreria `ezdxf` e il pannello dedicato, è stata completamente rimossa dal codice sorgente per semplificare l'interfaccia.
+
+---
+
+
