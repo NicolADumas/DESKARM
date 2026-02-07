@@ -22,9 +22,9 @@ class StateManager {
     constructor() {
         this.settings = {
             'origin': { 'x': 350, 'y': 350 }, // Default, updated on resize/init
-            'm_p': (0.328 * 2) / 700, // meters per pixel
-            'l1': 0.170,
-            'l2': 0.158,
+            'm_p': (0.272 * 2) / 700, // meters per pixel (derived from l1+l2 = 0.272)
+            'l1': 0.128,
+            'l2': 0.144,
             's_step': 1 / 50,
             'framerate': 60,
 
@@ -36,8 +36,8 @@ class StateManager {
                 'h': 0.30
             },
             'curvedWorkspace': {
-                'innerRadius': 0.12,
-                'outerRadius': 0.33
+                'innerRadius': 0.10,
+                'outerRadius': 0.27
             }
         };
 
@@ -87,7 +87,7 @@ class StateManager {
         // Update settings based on canvas
         this.settings.origin.x = canvasWidth / 2;
         this.settings.origin.y = canvasHeight / 2;
-        this.settings.m_p = (0.328 * 2) / canvasWidth;
+        this.settings.m_p = (0.272 * 2) / canvasWidth;
 
         this.manipulator = new Manipulator([0, 0], this.settings); // Home position: arm along +X axis
         this.trajectory = new Trajectory();
