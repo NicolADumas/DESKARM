@@ -81,6 +81,10 @@ class StateManager {
         this.semicircleStart = null;
         this.fullcircleStart = null;
         this.shapeStart = null;
+
+        // Image Tracing
+        this.backgroundImage = null; // HTMLImageElement
+        this.showOriginalImage = true;
     }
 
     init(canvasWidth, canvasHeight) {

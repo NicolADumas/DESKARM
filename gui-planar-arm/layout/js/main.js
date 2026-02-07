@@ -1206,6 +1206,30 @@ function setupImageEvents() {
         if (el) el.addEventListener('input', updateImagePreviewTransforms);
     });
 
+    // Real-time Preview Controls (Debounced)
+    const debouncedProcess = debounce(processImage, 500); // 500ms delay
+
+    if (ui.inputImgThreshold) {
+        ui.inputImgThreshold.addEventListener('input', (e) => {
+            document.getElementById('val-threshold').textContent = e.target.value;
+            debouncedProcess();
+        });
+    }
+    if (document.getElementById('img-smoothing')) {
+        document.getElementById('img-smoothing').addEventListener('input', (e) => {
+            document.getElementById('val-smoothing').textContent = e.target.value;
+            debouncedProcess();
+        });
+    }
+    if (document.getElementById('img-invert')) {
+        document.getElementById('img-invert').addEventListener('change', processImage);
+    }
+    if (document.getElementById('img-show-original')) {
+        document.getElementById('img-show-original').addEventListener('change', (e) => {
+            if (ui.imgPreviewImg) ui.imgPreviewImg.style.opacity = e.target.checked ? '0.3' : '0';
+        });
+    }
+
     // File Input Handle
     if (ui.inputImageFile) {
         ui.inputImageFile.addEventListener('change', (e) => {
@@ -1216,6 +1240,11 @@ function setupImageEvents() {
                     if (ui.imgPreviewImg) {
                         ui.imgPreviewImg.src = e.target.result;
                         ui.imgPreviewImg.style.display = 'block';
+
+                        // Set Background Image for Canvas Overlay
+                        const imgObj = new Image();
+                        imgObj.src = e.target.result;
+                        state.backgroundImage = imgObj;
                     }
                     if (document.getElementById('preview-msg')) {
                         document.getElementById('preview-msg').style.display = 'none';
@@ -1224,6 +1253,19 @@ function setupImageEvents() {
                 reader.readAsDataURL(file);
             }
         });
+
+        // Handle "Show Original" Toggle
+        const toggleOriginal = document.getElementById('img-show-original');
+        if (toggleOriginal) {
+            toggleOriginal.addEventListener('change', (e) => {
+                state.showOriginalImage = e.target.checked;
+                if (ui.imgPreviewImg) ui.imgPreviewImg.style.opacity = e.target.checked ? '0.3' : '0.5'; // dimmed if checked to not distract
+                if (window.canvasHandler) window.canvasHandler.animate();
+            });
+        }
+        if (document.getElementById('img-noise-reduction')) {
+            document.getElementById('img-noise-reduction').addEventListener('change', processImage);
+        }
     }
 }
 
@@ -1262,13 +1304,15 @@ async function processImage() {
         }
 
         const options = {
-            mode: isSvg ? 'svg' : 'raster',
+            mode: isSvg ? 'svg' : 'vector_bw', // Force Vector Mode
             width: parseFloat(ui.inputImgWidth.value) || 0.10,
-            x: 0, // Force 0 so we can transform client-side
+            x: 0,
             y: 0,
             rotation: 0,
-            threshold: parseInt(ui.inputImgThreshold.value) || 100,
-            inverted: false
+            threshold: parseInt(ui.inputImgThreshold.value) || 127,
+            smoothing: parseInt(document.getElementById('img-smoothing')?.value) || 2,
+            inverted: document.getElementById('img-invert')?.checked || false,
+            noise_reduction: document.getElementById('img-noise-reduction')?.checked || false
         };
 
         // Call Backend
@@ -1298,6 +1342,14 @@ function updateImagePreviewTransforms() {
     const offY = parseFloat(ui.inputImgY.value) || 0.0;
     const rotDeg = parseFloat(ui.inputImgRotation.value) || 0;
     const rotRad = rotDeg * (Math.PI / 180);
+
+    // Update State Transform for Canvas drawing
+    state.imageTransform = {
+        x: offX,
+        y: offY,
+        width: parseFloat(ui.inputImgWidth.value) || 0.10,
+        rotation: rotRad
+    };
 
     const transformedPatches = [];
 
@@ -1442,4 +1494,12 @@ function showImageStatus(msg, duration = 3000) {
     setTimeout(() => {
         el.classList.add('hidden');
     }, duration);
+}
+// Helper: Debounce function
+function debounce(func, wait) {
+    let timeout;
+    return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
 }

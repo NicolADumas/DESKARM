@@ -377,6 +377,9 @@ export class CanvasHandler {
         // Clear
         ctx.clearRect(0, 0, width, height);
 
+        // --- Draw Background Image (Trace Overlay) ---
+        this.drawBackgroundImage();
+
         // --- Workspace Limits ---
         const radius = this.workspaceRadius || (height / 2);
 
@@ -454,6 +457,67 @@ export class CanvasHandler {
         ctx.moveTo(origin.x, 0);
         ctx.lineTo(origin.x, height);
         ctx.stroke();
+    }
+
+    drawBackgroundImage() {
+        if (!this.state.showOriginalImage || !this.state.backgroundImage) return;
+
+        const img = this.state.backgroundImage;
+        if (!img.complete || img.naturalWidth === 0) return;
+
+        const ctx = this.ctx;
+        const origin = this.state.settings.origin;
+        const mp = this.state.settings.m_p;
+        const t = this.state.imageTransform || { x: 0.20, y: 0, width: 0.10, rotation: 0 };
+
+        ctx.save();
+
+        // 1. Move to Origin
+        ctx.translate(origin.x, origin.y);
+
+        // 2. Scale to World Coordinates (Pixels -> Meters)
+        // Y is flipped (Up is +)
+        const s = 1 / mp;
+        ctx.scale(s, -s);
+
+        // 3. Move to Image Position (Meters)
+        ctx.translate(t.x, t.y);
+
+        // 4. Rotate
+        // Canvas rotation is CW? Math is CCW.
+        // Since we flipped Y, rotation direction might flip too.
+        // Let's stick to standard math: +Rot is CCW.
+        // transform logic in main.js used standard rot matrix.
+        // ctx.rotate expects radians.
+        // If Y is flipped, +Angle rotates CW visually? 
+        // Standard: X right, Y up. +Angle = CCW.
+        // Canvas (Pre-flip): X right, Y down. +Angle = CW.
+        // After scale(1, -1): X right, Y up.
+        // So ctx.rotate(angle) should be CCW.
+        // But main.js rotation input is usually Degrees CW or CCW?
+        // Let's assume standard CCW.
+        ctx.rotate(t.rotation);
+
+        // 5. Draw Image Centered
+        const width_m = t.width;
+        const aspect = img.naturalWidth / img.naturalHeight;
+        const height_m = width_m / aspect;
+
+        ctx.globalAlpha = 0.3; // Make it faint (overlay)
+        // Image is drawn from top-left. We want center.
+        // Note: Y is Up. drawImage draws +Y down? 
+        // No, drawImage draws in current coords.
+        // If we scaled Y by -1, then +Y is up.
+        // Drawing from -h/2 to +h/2?
+        // Actually, HTML Canvas Images are drawn "down" from y.
+        // If Y axis is flipped, the image will be drawn "up" (inverted).
+        // So we must Flip Y AGAIN for the image itself?
+        // Or just scale(1, -1) inside the image draw?
+
+        ctx.scale(1, -1); // Flip back for image drawing so it's upright
+        ctx.drawImage(img, -width_m / 2, -height_m / 2, width_m, height_m);
+
+        ctx.restore();
     }
 
     drawPoint(p, color = '#00e5ff') { // Default to accent color (cyan) for visibility

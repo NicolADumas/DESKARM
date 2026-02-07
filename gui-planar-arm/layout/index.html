@@ -170,8 +170,25 @@
                     <label>Rotation:</label> <input type="number" id="img-rotation" value="0" step="5">
                 </div>
                 <div class="input-row">
-                    <label>Threshold:</label> <input type="number" id="img-threshold" value="100" step="10" min="10"
-                        max="255">
+                    <label>Threshold:</label>
+                    <input type="range" id="img-threshold" value="127" min="0" max="255" step="1" style="flex-grow: 1;">
+                    <span id="val-threshold" style="width: 30px; text-align: right;">127</span>
+                </div>
+                <div class="input-row">
+                    <label>Smoothing:</label>
+                    <input type="range" id="img-smoothing" value="2" min="0" max="10" step="1" style="flex-grow: 1;">
+                    <span id="val-smoothing" style="width: 30px; text-align: right;">2</span>
+                </div>
+                <div class="input-row" style="justify-content: space-between;">
+                    <label style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="img-invert"> Invert
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="img-show-original" checked> Overlay
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="img-noise-reduction"> Denoise
+                    </label>
                 </div>
 
                 <div id="image-loading" class="hidden"

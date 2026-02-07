@@ -46,6 +46,8 @@ def process_image(file_data_base64, options):
         
         if mode == 'svg':
             raw_paths = _process_svg(decoded_data)
+        elif mode == 'vector_bw' or True: # Default to new Vector BW engine for now
+            raw_paths = _process_vector_bw(decoded_data, options)
         else:
             raw_paths = _process_raster(decoded_data, options)
             
@@ -234,3 +236,141 @@ def _process_svg(svg_data):
     except Exception as e:
         print(f"SVG Error: {e}")
         return []
+
+def _process_vector_bw(image_data, options):
+    """
+    Step 1: Strict Binary Vectorization (B/W Only)
+    """
+    try:
+        # Load image from bytes
+        nparr = np.frombuffer(image_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
+        
+        if img is None: return []
+            
+        # Optimization: Resize for detail (High Res)
+        max_dim = 2000
+        h, w = img.shape
+        if h > max_dim or w > max_dim:
+            scale = max_dim / max(h, w)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        # 1. Strict Binary Thresholding
+        # Use user-defined threshold
+        thresh_val = int(options.get('threshold', 127))
+        inverted = bool(options.get('inverted', False))
+        
+        # If Inverted: White lines on Black bg -> We want White to be foreground (255)
+        # If Normal: Black lines on White bg -> We want Black to be foreground (0->255)
+        # THRESH_BINARY_INV: mask = src > thresh ? 0 : 255 (Dark is fg)
+        # THRESH_BINARY: mask = src > thresh ? 255 : 0 (Light is fg)
+        
+        type_ = cv2.THRESH_BINARY if inverted else cv2.THRESH_BINARY_INV
+        _, binary = cv2.threshold(img, thresh_val, 255, type_)
+
+        # Morphological Cleanup (Optional, removes single noise pixels)
+        # Controlled by User Toggle
+        if options.get('noise_reduction', False):
+            kernel = np.ones((2,2), np.uint8)
+            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel) # Remove noise
+
+        # Step 2: Full Contour Extraction (RETR_TREE)
+        # Use RETR_TREE to capture full hierarchy (including holes)
+        contours, hierarchy = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        paths = []
+        for cnt in contours:
+             # Filter noise (dust)
+             length = cv2.arcLength(cnt, True)
+             if length < 2: continue # Was 10, reduced to 2 for micro-details
+
+             # Step 3: Curve Smoothing
+             # 1. Initial simplify to get main shape (remove pixel steps)
+             epsilon = 0.002 * length 
+             approx = cv2.approxPolyDP(cnt, epsilon, True)
+             pts = [ (float(p[0][0]), float(p[0][1])) for p in approx ]
+             
+             # 2. Apply Chaikin Smoothing (Corner Cutting)
+             # User defined smoothing iterations
+             smooth_iter = int(options.get('smoothing', 2))
+             if len(pts) > 2 and smooth_iter > 0:
+                 pts = _chaikin_smooth(pts, iterations=smooth_iter)
+                 pts.append(pts[0]) # Close loop
+                 paths.append(pts)
+                 
+        # Step 4: Sorting (Optimize Travel)
+        paths = _sort_paths(paths)
+                 
+        return paths
+
+    except Exception as e:
+        print(f"Vector BW Error: {e}")
+        return []
+
+def _chaikin_smooth(points, iterations=2):
+    """
+    Chaikin's Corner Cutting Algorithm for curve smoothing.
+    Replaces each corner with two new points (at 25% and 75% of the segment).
+    """
+    if len(points) < 3: return points
+    
+    smoothed = points
+    for _ in range(iterations):
+        new_points = []
+        for i in range(len(smoothed)):
+            p0 = smoothed[i]
+            p1 = smoothed[(i + 1) % len(smoothed)] # Wrap around
+            
+            # Q = 0.75*P0 + 0.25*P1
+            # R = 0.25*P0 + 0.75*P1
+            
+            x0, y0 = p0
+            x1, y1 = p1
+            
+            qx = 0.75 * x0 + 0.25 * x1
+            qy = 0.75 * y0 + 0.25 * y1
+            
+            rx = 0.25 * x0 + 0.75 * x1
+            ry = 0.25 * y0 + 0.75 * y1
+            
+            new_points.append((qx, qy))
+            new_points.append((rx, ry))
+        smoothed = new_points
+        
+    return smoothed
+
+def _sort_paths(paths):
+    """
+    Sorts paths using a Nearest Neighbor Heuristic to minimize Pen-Up travel.
+    """
+    if not paths: return []
+    
+    sorted_paths = []
+    current_pos = (0,0) # Assume robot starts at origin (or last end)
+    
+    # Simple Greedy: Find closest start point to current position
+    remaining = paths[:]
+    
+    while remaining:
+        best_idx = -1
+        min_dist = float('inf')
+        
+        for i, path in enumerate(remaining):
+            start = path[0]
+            # Euclidean distance sq
+            d = (start[0]-current_pos[0])**2 + (start[1]-current_pos[1])**2
+            
+            if d < min_dist:
+                min_dist = d
+                best_idx = i
+        
+        # Add best path
+        next_path = remaining.pop(best_idx)
+        sorted_paths.append(next_path)
+        
+        # Update current pos to end of this path
+        current_pos = next_path[-1]
+        
+    return sorted_paths
