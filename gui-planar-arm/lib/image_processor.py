@@ -144,8 +144,8 @@ def _process_raster(image_data, options):
         if img is None:
             return []
             
-        # Optimization: Resize if too large (e.g. > 1200px)
-        max_dim = 1200
+        # Optimization: Resize if too large (e.g. > 2000px) - INCREASED FOR PRECISION
+        max_dim = 2000
         h, w = img.shape
         if h > max_dim or w > max_dim:
             scale = max_dim / max(h, w)
@@ -179,7 +179,8 @@ def _process_raster(image_data, options):
             if length < 15: continue
             
             # Poly Approximation to reduce points
-            epsilon = 0.003 * length 
+            # HIGH PRECISION: Reduced epsilon from 0.003 to 0.0005
+            epsilon = 0.0005 * length 
             approx = cv2.approxPolyDP(cnt, epsilon, True)
             
             # Convert to list of (x,y)
@@ -217,8 +218,8 @@ def _process_svg(svg_data):
             length = path.length()
             if length == 0: continue
             
-            # Dynamic sampling based on length (1 point every 5 units)
-            num_samples = max(int(length / 5), 5) 
+            # Dynamic sampling based on length (1 point every 1 unit) - INCREASED PRECISION
+            num_samples = max(int(length / 1.0), 10) 
             
             pts = []
             for i in range(num_samples + 1):

@@ -154,8 +154,8 @@ def merge_to_polylines(data):
                         dot = (v1[0]*v2[0] + v1[1]*v2[1]) / (mag1 * mag2)
                         # Clamp for safety
                         dot = max(-1.0, min(1.0, dot))
-                        # Only merge if angle < 15 degrees (cos(15) ~ 0.96)
-                        if dot < 0.96:
+                        # HIGH PRECISION: Only merge if angle < 1 degree (cos(1) ~ 0.9998)
+                        if dot < 0.9998:
                             is_collinear = False
                     
                     if is_collinear:
@@ -212,7 +212,8 @@ def py_get_data():
                  
                  dist = ((p_prev_end[0] - p_curr_start[0])**2 + (p_prev_end[1] - p_curr_start[1])**2)**0.5
                  
-                 if dist < 0.001: 
+                 # HIGH PRECISION: Reduced gap tolerance from 1mm to 0.1mm
+                 if dist < 0.0001: 
                      # Force snap
                      curr['points'][0] = p_prev_end
         # ------------------------------------------
