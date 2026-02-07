@@ -97,82 +97,6 @@ def trace_trajectory(q:tuple[list,list]):
             x.append(tpy.dk(np.array([q1[i], q2[i]]).T))
         plotting.debug_plotXY([xt[0] for xt in x], [yt[1] for yt in x], "xy")
 
-
-def merge_to_polylines(data):
-    if not data: return []
-    
-    optimized = []
-    buffer = []
-    
-    def flush_buffer():
-        if not buffer: return
-        if len(buffer) == 1:
-            optimized.append(buffer[0])
-        else:
-            # Create Polyline
-            poly_points = [buffer[0]['points'][0]]
-            for i in range(len(buffer)):
-                poly_points.append(buffer[i]['points'][1])
-                
-            optimized.append({
-                'type': 'polyline',
-                'points': poly_points,
-                'data': buffer[0]['data'] 
-            })
-        buffer.clear()
-
-    for patch in data:
-        # Merge criteria: type is line, NOT penup (drawing), connected to previous
-        is_drawing_line = (patch['type'] == 'line') and (not patch['data'].get('penup'))
-        
-        if is_drawing_line:
-            if not buffer:
-                buffer.append(patch)
-            else:
-                # 1. Check connectivity
-                prev = buffer[-1]
-                p_end = prev['points'][1]
-                p_start = patch['points'][0]
-                dist = ((p_end[0]-p_start[0])**2 + (p_end[1]-p_start[1])**2)**0.5
-                
-                if dist < 0.001:
-                    # 2. Check Collinearity (Avoid merging sharp corners)
-                    # Vector 1: prev start to end
-                    # Vector 2: current start to end
-                    p_prev_start = prev['points'][0]
-                    p_curr_end = patch['points'][1]
-                    
-                    v1 = (p_end[0] - p_prev_start[0], p_end[1] - p_prev_start[1])
-                    v2 = (p_curr_end[0] - p_start[0], p_curr_end[1] - p_start[1])
-                    
-                    mag1 = (v1[0]**2 + v1[1]**2)**0.5
-                    mag2 = (v2[0]**2 + v2[1]**2)**0.5
-                    
-                    is_collinear = True
-                    if mag1 > 0.001 and mag2 > 0.001:
-                        # Normalize dot product (cosine of angle)
-                        dot = (v1[0]*v2[0] + v1[1]*v2[1]) / (mag1 * mag2)
-                        # Clamp for safety
-                        dot = max(-1.0, min(1.0, dot))
-                        # Only merge if angle < 15 degrees (cos(15) ~ 0.96)
-                        if dot < 0.96:
-                            is_collinear = False
-                    
-                    if is_collinear:
-                        buffer.append(patch)
-                    else:
-                        flush_buffer()
-                        buffer.append(patch)
-                else:
-                    flush_buffer()
-                    buffer.append(patch)
-        else:
-            flush_buffer()
-            optimized.append(patch)
-            
-    flush_buffer()
-    return optimized
-
 # --- EEL EXPOSED FUNCTIONS ---
 
 @eel.expose
@@ -216,20 +140,12 @@ def py_get_data():
                      # Force snap
                      curr['points'][0] = p_prev_end
         # ------------------------------------------
-
-        # OPTIMIZATION: Merge consecutive lines into Polylines for fluid execution
-        data = merge_to_polylines(data)
-        print(f"DEBUG: Optimized patches count: {len(data)}")
         
         # Stitch patches
         q0s = []
         q1s = []
         penups = []
         ts = []
-        
-        # PROPAGATION: Maintain current joint position as seed for next patch
-        initial_q = state.last_known_q[:]
-        
         for patch in data: 
             (q0s_p, q1s_p, penups_p, ts_p) = tpy.slice_trj(
                 patch, 
@@ -237,46 +153,13 @@ def py_get_data():
                 max_acc=SETTINGS['max_acc'],
                 line=SETTINGS['line_tl'],
                 circle=SETTINGS['circle_tl'],
-                sizes=SIZES,
-                initial_q=initial_q
+                sizes=SIZES
             )
-            # Update seed for next segment/patch
-            if q0s_p:
-                initial_q = [q0s_p[-1], q1s_p[-1]]
-                
             # Stitching logic
             q0s += q0s_p if len(q0s) == 0 else q0s_p[1:] 
             q1s += q1s_p if len(q1s) == 0 else q1s_p[1:]
             penups += penups_p if len(penups) == 0 else penups_p[1:]
             ts += [(t + ts[-1] if len(ts) > 0  else t) for t in (ts_p if len(ts) == 0 else ts_p[1:])]
-
-        # --- PEN UP LOGIC (Start/End) ---
-        if len(q0s) > 0:
-            wait_time = 0.5
-            wait_points = int(wait_time / SETTINGS['Tc'])
-            
-            # 1. Prepend Wait (Pen Up)
-            q0s = [q0s[0]] * wait_points + q0s
-            q1s = [q1s[0]] * wait_points + q1s
-            penups = [1] * wait_points + penups
-            
-            # Shift existing timestamps
-            ts = [t + wait_time for t in ts]
-            # Create prefix timestamps (0 to wait_time)
-            ts_prefix = [i * SETTINGS['Tc'] for i in range(wait_points)]
-            ts = ts_prefix + ts
-
-            # 2. Append Wait (Pen Up)
-            q0s += [q0s[-1]] * wait_points
-            q1s += [q1s[-1]] * wait_points
-            penups += [1] * wait_points
-            
-            # Create suffix timestamps
-            last_t = ts[-1]
-            ts_suffix = [last_t + (i+1) * SETTINGS['Tc'] for i in range(wait_points)]
-            ts += ts_suffix
-            
-            print(f"Added Pen Up Waits: {wait_time}s start/end. Total points: {len(q0s)}")
 
         q = (q0s, q1s, penups)
         dq = (tpy.find_velocities(q[0], ts), tpy.find_velocities(q[1], ts))
@@ -726,3 +609,7 @@ def py_process_image(file_data, options):
         traceback.print_exc()
         print(f"CRITICAL BACKEND ERROR: {e}")
         return []
+
+
+
+

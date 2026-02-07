@@ -317,90 +317,26 @@ def compose_cycloidal(q:list[float], ddqm:float = 1.05) -> list[tuple[list[funct
 @outputs: 
 - ndarray: column numpy array containing the values of the joint coordinates.
 @# """
-def ik(x:float, y:float, z:float = 0, theta:float = None, sizes:dict[float] = {'l1':0.170 ,'l2':0.158}, limits:dict[float] = None, seed_q:np.ndarray = None) -> np.ndarray:
-# if x**2+y**2 > (sizes['l1']+sizes['l2'])**2: return None
-
+def ik(x:float, y:float, z:float = 0, theta:float = None, sizes:dict[float] = {'l1':0.170 ,'l2':0.158}) -> np.ndarray:
+    if x**2+y**2 > (sizes['l1']+sizes['l2'])**2: return None
+    q1 = 0
+    q2 = 0
     a1 = sizes['l1']
     a2 = sizes['l2']
 
-    solutions = []
-
-    # 1. Calculate Standard Solution
-    q1_std = 0
-    q2_std = 0
-    valid_std = True
 
     if theta is not None:
         cos_q2 = (x**2+y**2-sizes['l1']**2-sizes['l2']**2)/(2*sizes['l1']*sizes['l2'])
-        # Clamp instead of invalidating
-        if cos_q2 > 1.0: cos_q2 = 1.0
-        if cos_q2 < -1.0: cos_q2 = -1.0
-        
         sin_q2 = sqrt(1-cos_q2**2)
-        q2_std = atan2(sin_q2, cos_q2)
-        q1_std = theta-q2_std
+        q2 = atan2(sin_q2, cos_q2)
+        q1 = theta-q2
     else:
-        cos_q2 = (x**2+y**2-a1**2-a2**2)/(2*a1*a2)
-        # Clamp instead of invalidating
-        if cos_q2 > 1.0: cos_q2 = 1.0
-        if cos_q2 < -1.0: cos_q2 = -1.0
-        
-        q2_std = acos(cos_q2)
-        q1_std = atan2(y,x)-atan2(a2*sin(q2_std), a1+a2*cos(q2_std))
+        q2 = acos((x**2+y**2-a1**2-a2**2)/(2*a1*a2))
+        q1 = atan2(y,x)-atan2(a2*sin(q2), a1+a2*cos(q2))
 
-    if valid_std:
-        solutions.append((q1_std, q2_std))
-        
-    # 2. Calculate Alternative Solution (flipped q2)
-    # q2_alt = -q2_std
-    if valid_std and abs(q2_std) > 1e-6: # Avoid duplicate if q2 is 0
-        q2_alt = -q2_std
-        q1_alt = 0
-        
-        if theta is not None:
-             q1_alt = theta - q2_alt
-        else:
-             q1_alt = atan2(y,x)-atan2(a2*sin(q2_alt), a1+a2*cos(q2_alt))
-             
-        solutions.append((q1_alt, q2_alt))
 
-    # 3. Filter by Limits
-    valid_solutions = []
-    TOL = 1e-2 # 0.01 rad tolerance for boundary continuity
-    if limits:
-        for (q1, q2) in solutions:
-            # if (limits['q1_min'] - TOL <= q1 <= limits['q1_max'] + TOL) and \
-            #    (limits['q2_min'] - TOL <= q2 <= limits['q2_max'] + TOL):
-            valid_solutions.append((q1, q2))
-    else:
-        valid_solutions = solutions
-
-    if not valid_solutions:
-        # return None
-        pass
-
-    # 4. Select Best Solution using seed_q
-    if seed_q is not None:
-        best_sol = None
-        min_dist = float('inf')
-        
-        # seed_q is np.ndarray [[q1], [q2], [z]]
-        curr_q1 = seed_q[0,0]
-        curr_q2 = seed_q[1,0]
-        
-        for (q1, q2) in valid_solutions:
-            # Simple euclidean distance in joint space
-            dist = (q1 - curr_q1)**2 + (q2 - curr_q2)**2
-            if dist < min_dist:
-                min_dist = dist
-                best_sol = (q1, q2)
-        
-        if best_sol:
-            return np.array([[best_sol[0], best_sol[1], z]]).T
-            
-    # Default: return first valid
-    sol = valid_solutions[0]
-    return np.array([[sol[0], sol[1], z]]).T
+    q = np.array([[q1,q2,z]]).T
+    return q
 
 """ #@
 @name: dk
@@ -413,11 +349,9 @@ def ik(x:float, y:float, z:float = 0, theta:float = None, sizes:dict[float] = {'
 - ndarray: column numpy array containing the values of the coordinates of the end effector (x, y and the rotation angle theta).
 @# """
 def dk(q:np.ndarray, sizes:dict[float] = {'l1':0.170,'l2':0.158})->np.ndarray:
-    q1 = float(q[0,0] if q.ndim > 1 else q[0])
-    q2 = float(q[1,0] if q.ndim > 1 else q[1])
-    x = sizes['l1']*cos(q1)+sizes['l2']*cos(q1+q2)
-    y = sizes['l1']*sin(q1)+sizes['l2']*sin(q1+q2)
-    theta = q1+q2
+    x = sizes['l1']*cos(q[0])+sizes['l2']*cos(q[0]+q[1])
+    y = sizes['l1']*sin(q[0])+sizes['l2']*sin(q[0]+q[1])
+    theta = q[0]+q[1]
     return np.array([[x,y,theta]]).T
 
 """
@@ -575,22 +509,12 @@ def slice_trj(patch: dict, **kargs):
     # populate arguments with default values
     if 'max_acc' not in kargs:
         kargs['max_acc'] = 1.05
-    if 'max_speed' not in kargs:
-        kargs['max_speed'] = 5.0 # Default max speed if not specified
-        
     if 'line' not in kargs or 'circle' not in kargs:
         raise Exception("No line or circle timing law was specified")
     if 'Tc' not in kargs:
         kargs['Tc'] = 1e-3
     if 'sizes' not in kargs:
         print('Using default sizes')
-    limits = kargs.get('limits', None)
-    
-    # Initialize seed from previous configuration if available
-    q_prev = kargs.get('initial_q', None)
-    # Ensure q_prev is numpy array if it exists (it comes as list [q1, q2] usually)
-    if q_prev is not None and not isinstance(q_prev, np.ndarray):
-        q_prev = np.array([q_prev + [0]]).T # [q1, q2] -> [[q1],[q2],[0]]
     
     q0s = []
     q1s = []
@@ -605,79 +529,37 @@ def slice_trj(patch: dict, **kargs):
     angle = 0
     radius=abs((sp-c).mag()) if patch['type'] == 'circle' else None  #radius of the circle
     if patch['type'] == 'circle':
-        v1 = (sp-c) 
-        v2 = (ep-c) 
-        # find the angle of rotation between start and end point
-        d_alpha = (2*pi+v2.angle())%(2*pi) - (2*pi+v1.angle())%(2*pi) # between 0 and 2pi
-        angle = d_alpha if abs(d_alpha) < pi else (-(2*pi-d_alpha) if d_alpha > 0 else 2*pi+d_alpha) # angle between the two vectors starting from the center of the circumference
+        # Check if explicit angle (delta) is provided in custom data
+        # This is sent by the frontend to ensure exact arc reproduction (CW/CCW, major/minor)
+        if 'angle' in patch.get('data', {}):
+            angle = patch['data']['angle']
+        else:
+            # Fallback for legacy calls or Text Generation which might not send explicit angle
+            v1 = (sp-c) 
+            v2 = (ep-c) 
+            # find the angle of rotation between start and end point
+            d_alpha = (2*pi+v2.angle())%(2*pi) - (2*pi+v1.angle())%(2*pi) # between 0 and 2pi
+            # Original logic forced shortest path (-pi to pi)
+            angle = d_alpha if abs(d_alpha) < pi else (-(2*pi-d_alpha) if d_alpha > 0 else 2*pi+d_alpha)
 
-    if patch['type'] == 'polyline':
-        # Polyline Logic: Interpolate across multiple points based on total length
-        pts = [Point(*p) for p in patch['points']]
-        Ls = []
-        total_len = 0
-        for i in range(len(pts)-1):
-            d = (pts[i+1]-pts[i]).mag()
-            Ls.append(d)
-            total_len += d
-        
-        # Calculate duration based on total length
-        # Constraints: 
-        # 1. Acceleration: tf >= sqrt(2*k*S / A) -> for cycloidal k=pi -> sqrt(2*pi*S / A)
-        # 2. Velocity: tf >= k*S / V -> for cycloidal k=2 -> 2*S / V
-        
-        tf_acc = sqrt(2*pi*total_len / kargs['max_acc'])
-        tf_vel = (2 * total_len) / kargs['max_speed']
-        tf = max(tf_acc, tf_vel)
-        
-        print(f"[DEBUG] Polyline Slicing: Pts={len(pts)}, Len={total_len:.4f}, Acc={kargs['max_acc']}, Vmax={kargs['max_speed']} -> Tf={tf:.4f} (Ta={tf_acc:.4f}, Tv={tf_vel:.4f})")
-    else:
-        # length = l if patch['type'] == 'line' else patch['data']['radius']*abs(angle) # LENGTH OF THE PATH
-        # NOTE: changed for testing purposes -> change when real accelerations values are found
-        length = l if patch['type'] == 'line' else abs(angle)*radius # LENGTH OF THE PATH
-        
-        tf_acc = sqrt(2*pi*length/kargs['max_acc'])
-        tf_vel = (2 * length) / kargs['max_speed']
-        tf = max(tf_acc, tf_vel)
-        print(f"[DEBUG] Primitive Slicing: Type={patch['type']}, Len={length:.4f}, Acc={kargs['max_acc']}, Vmax={kargs['max_speed']} -> Tf={tf:.4f} (Ta={tf_acc:.4f}, Tv={tf_vel:.4f})")
-
+    # length = l if patch['type'] == 'line' else patch['data']['radius']*abs(angle) # LENGTH OF THE PATH
+    # NOTE: changed for testing purposes -> change when real accelerations values are found
+    length = l if patch['type'] == 'line' else abs(angle)*radius # LENGTH OF THE PATH
+    tf = sqrt(2*pi*length/kargs['max_acc']) # duration of the motion
 
     points = [] # points (in operational space)
     if patch['data']['penup']:
         # if penup -> use a point-to-point trajectory (in this case: cycloidal)
         # patch['points'] -> [[x0, y0], [x1, y1]]
-        k_sz = kargs['sizes']
+        ik0 = ik(patch['points'][0][0], patch['points'][0][1], 1, None, kargs['sizes'])
+        ik1 = ik(patch['points'][1][0], patch['points'][1][1], 1, None, kargs['sizes'])
         
-        # DEBUG: Check Start Continuity
-        if q_prev is not None:
-             dk_res = dk(q_prev, k_sz) # q_prev is [[q1],[q2],[z]] or similar
-             curr_x, curr_y = dk_res[0,0], dk_res[1,0]
-             target_x, target_y = patch['points'][0][0], patch['points'][0][1]
-             dist_sq = (curr_x-target_x)**2 + (curr_y-target_y)**2
-             if dist_sq > 0.0001:
-                  print(f"[DEBUG] PenUp Start Cartesian Drift: dist={sqrt(dist_sq):.6f}")
-                  print(f"        Robot: ({curr_x:.4f}, {curr_y:.4f})")
-                  print(f"        Patch: ({target_x:.4f}, {target_y:.4f})")
-
-        # Calculate Start Joint Config (Continuous with previous)
-        res0 = ik(patch['points'][0][0], patch['points'][0][1], 1, None, k_sz, limits, seed_q=q_prev)
-        if res0 is None: raise Exception(f"IK Failed for Start Point {patch['points'][0]}")
-        qt0 = list(res0.T[0])
-        
-        if q_prev is not None:
-             q_prev_list = list(q_prev.T[0])
-             j_dist = (qt0[0]-q_prev_list[0])**2 + (qt0[1]-q_prev_list[1])**2
-             if j_dist > 0.01:
-                  print(f"[DEBUG] IK JUMP at PenUp Start: {sqrt(j_dist):.4f} rad")
-                  print(f"        Prev Q: {q_prev_list}")
-                  print(f"        New Q:  {qt0}")
-                  print(f"        Seed Used: {q_prev_list}")
-        
-        # Calculate End Joint Config (Continuous with Start)
-        res1 = ik(patch['points'][1][0], patch['points'][1][1], 1, None, k_sz, limits, seed_q=res0)
-        if res1 is None: raise Exception(f"IK Failed for End Point {patch['points'][1]}")
-        qt1 = list(res1.T[0])
-        
+        if ik0 is None or ik1 is None:
+            print(f"Warning: Penup trajectory has unreachable point(s). Start: {patch['points'][0]}, End: {patch['points'][1]}")
+            return [], [], [], []  # Return empty - skip this patch
+            
+        qt0 = list(ik0.T[0])
+        qt1 = list(ik1.T[0])
         (traj0, dt0) = cycloidal([qt0[0], qt1[0]], kargs['max_acc']*0.4, tf) # first motor
         (traj1, dt1) = cycloidal([qt0[1], qt1[1]], kargs['max_acc']*0.4, tf) # second motor
         for t in rangef(0, kargs['Tc'], tf):
@@ -699,61 +581,21 @@ def slice_trj(patch: dict, **kargs):
             s = kargs['circle'](t, tf)
             points.append(c+(sp-c).rotate(s*angle))
             ts.append(t)
-    elif patch['type'] == 'polyline':
-        for t in rangef(0, kargs['Tc'], tf, True):
-            s_norm = kargs['line'](t, tf) # Normalized s [0, 1]
-            s = s_norm * total_len # Actual distance along polyline
-            
-            # Find which segment 's' falls into
-            curr_dist = 0
-            found = False
-            for i, seg_len in enumerate(Ls):
-                if curr_dist + seg_len >= s:
-                    # Interpolate in this segment
-                    remain = s - curr_dist
-                    ratio = remain / seg_len if seg_len > 0 else 0
-                    p_interp = pts[i] + (pts[i+1]-pts[i]) * ratio
-                    points.append(p_interp)
-                    found = True
-                    break
-                curr_dist += seg_len
-            
-            if not found:
-                 points.append(pts[-1])
-            ts.append(t)
 
     for p in points:
-        res = ik(p.x, p.y, 0, None, kargs['sizes'], limits, seed_q=q_prev)
-        if res is None: raise Exception(f"IK Failed for point {p}")
-        qt = list(res.T[0]) # points converted to joint space
-        
-        # DEBUG: Check for jumps within the loop
-        if q_prev is not None and isinstance(q_prev, np.ndarray):
-             q_prev_list = list(q_prev.T[0])
-             dist = (qt[0]-q_prev_list[0])**2 + (qt[1]-q_prev_list[1])**2
-             if dist > 0.1**2:
-                 jump_mag = sqrt(dist)
-                 error_msg = f"IK Jump Detected: {jump_mag:.4f} rad. The path is not continuous."
-                 print(f"[!] {error_msg}")
-                 # raise Exception(error_msg)
-                 print(f"    Point: {p}")
-                 print(f"    Prev Q: {q_prev_list}")
-                 print(f"    New Q: {qt}")
-                 print(f"    Limits: {limits}")
-                 
-                 # Recalculate raw solutions to see what was filtered
-                 if 'solutions' not in locals(): # solutions variable is local to ik, let's just print res info
-                      pass # We are outside ik scope here, so we can't see internal variables of ik()
-                 
-                 # Calling IK again with debugging print would be creating a loop, 
-                 # instead let's just inspect limits vs Prev Q
-
+        ik_result = ik(p.x, p.y, 0, None, kargs['sizes'])
+        if ik_result is None:
+            # Point unreachable - skip or use last known position
+            print(f"Warning: Point ({p.x:.3f}, {p.y:.3f}) unreachable by robot")
+            if q0s:
+                q0s.append(q0s[-1])
+                q1s.append(q1s[-1])
+                penups.append(1)  # Pen up for unreachable
+            continue
+        qt = list(ik_result.T[0])
         q0s.append(qt[0])
         q1s.append(qt[1])
         penups.append(0)
-        
-        # Update seed for next point
-        q_prev = res
 
     return q0s, q1s, penups, ts
 

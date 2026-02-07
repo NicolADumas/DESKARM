@@ -1,6 +1,6 @@
 import { appState, TOOLS } from './state.js';
 import { CanvasHandler } from './canvas.js';
-import { Point, abs2rel } from './utils.js';
+import { Point } from './utils.js';
 import { API } from './api.js';
 import { ThemeManager } from './theme.js';
 
@@ -128,6 +128,8 @@ function initUI() {
         inputImgThreshold: document.getElementById('img-threshold'),
         btnProcessImage: document.getElementById('btn-process-image'),
         btnConfirmImage: document.getElementById('btn-confirm-image'),
+
+
     };
 }
 
@@ -333,11 +335,6 @@ function setupEventListeners() {
     if (ui.btnAppModeDrawing && ui.btnAppModeText) {
         ui.btnAppModeDrawing.addEventListener('click', () => setAppMode('drawing'));
         ui.btnAppModeText.addEventListener('click', () => setAppMode('text'));
-
-        if (ui.btnAppModeImage) {
-            ui.btnAppModeImage.addEventListener('click', () => setAppMode('image'));
-        }
-
         setAppMode('drawing'); // Default
     }
 
@@ -565,8 +562,6 @@ function setAppMode(mode) {
     ui.sectionDrawing.style.display = (mode === 'drawing') ? 'block' : 'none';
     ui.sectionText.style.display = (mode === 'text') ? 'block' : 'none';
     if (ui.sectionImage) ui.sectionImage.style.display = (mode === 'image') ? 'block' : 'none';
-
-
 
     if (mode === 'drawing') {
         // Force redraw to clear ghost
@@ -1193,32 +1188,58 @@ document.addEventListener('keydown', (e) => {
 
 // --- Image Tool Logic ---
 
+state.imagePreviewPatches = []; // Temporary storage for processed lines from backend
+
 function setupImageEvents() {
+    if (ui.btnAppModeImage) {
+        ui.btnAppModeImage.addEventListener('click', () => setAppMode('image'));
+    }
+
     if (ui.btnProcessImage) {
         ui.btnProcessImage.addEventListener('click', processImage);
     }
+
     if (ui.btnConfirmImage) {
         ui.btnConfirmImage.addEventListener('click', confirmImage);
     }
 
-    // Preview Transforms Update
-    [ui.inputImgWidth, ui.inputImgX, ui.inputImgY, ui.inputImgRotation].forEach(el => {
-        if (el) el.addEventListener('input', updateImagePreviewTransforms);
-    });
-
-    // File Input Handle
+    // File Input
     if (ui.inputImageFile) {
         ui.inputImageFile.addEventListener('change', (e) => {
+            console.log("Image file selected");
             const file = e.target.files[0];
             if (file) {
+                console.log("File:", file.name, file.type);
+
+                // Handle TIFF preview limitation
+                if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
+                    if (ui.imgPreviewContainer) {
+                        // Show text instead of image
+                        ui.imgPreviewImg.style.display = 'none';
+                        // Create or update a message element
+                        let msg = document.getElementById('preview-msg');
+                        if (!msg) {
+                            msg = document.createElement('span');
+                            msg.id = 'preview-msg';
+                            ui.imgPreviewContainer.appendChild(msg);
+                        }
+                        msg.textContent = "TIFF Preview not supported. Click PROCESS.";
+                        msg.style.display = 'block';
+                    }
+                    return;
+                }
+
+                // Standard Image Preview
                 const reader = new FileReader();
-                reader.onload = function (e) {
+                reader.onload = (e) => {
+                    console.log("File read complete");
                     if (ui.imgPreviewImg) {
                         ui.imgPreviewImg.src = e.target.result;
                         ui.imgPreviewImg.style.display = 'block';
-                    }
-                    if (document.getElementById('preview-msg')) {
-                        document.getElementById('preview-msg').style.display = 'none';
+
+                        // Hide message if exists
+                        const msg = document.getElementById('preview-msg');
+                        if (msg) msg.textContent = "Preview";
                     }
                 };
                 reader.readAsDataURL(file);
@@ -1227,219 +1248,321 @@ function setupImageEvents() {
     }
 }
 
-state.rawImagePatches = []; // Patches from backend (normalized)
-state.imagePreviewPatches = []; // Patches transformed for preview
-
 async function processImage() {
     const fileInput = ui.inputImageFile;
-    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
         alert("Please select an image file first.");
         return;
     }
 
-    const file = fileInput.files[0];
-    const isSvg = file.name.toLowerCase().endsWith('.svg');
+    // UI Elements
+    // Use the debug log area instead of just loader
+    const loader = document.getElementById('image-loading');
+    const debugLog = document.getElementById('image-debug-log');
+    const btnProcess = ui.btnProcessImage;
 
-    // Show Loading
-    const loadingEl = document.getElementById('image-loading');
-    if (loadingEl) loadingEl.classList.remove('hidden');
+    // Show Loader
+    if (loader) loader.classList.remove('hidden');
+
+    if (debugLog) {
+        debugLog.classList.remove('hidden');
+        debugLog.innerHTML = `<div style="color: var(--accent-color)">> Starting processing...</div>`;
+    }
+
+    // Also use button text as loader
+    if (btnProcess) {
+        btnProcess.setAttribute('data-original-text', btnProcess.textContent);
+        btnProcess.textContent = "Processing...";
+        btnProcess.disabled = true;
+    }
+
+    const file = fileInput.files[0];
+
+    // Check mode
+    const isSvg = file.name.toLowerCase().endsWith('.svg');
+    const options = {
+        mode: isSvg ? 'svg' : 'raster',
+        width: parseFloat(ui.inputImgWidth.value) || 0.10,
+        x: parseFloat(ui.inputImgX.value) || 0.20,
+        y: parseFloat(ui.inputImgY.value) || 0.00,
+        rotation: parseFloat(ui.inputImgRotation.value) || 0,
+        threshold: parseFloat(ui.inputImgThreshold ? ui.inputImgThreshold.value : 100) || 100
+    };
 
     try {
         let base64Data = "";
 
         if (isSvg) {
-            // For SVG, read as text then resize/convert? No, backend handles SVG text.
-            // readAsDataURL handles both.
-            base64Data = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result); // content
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
+            // Read SVG normally
+            base64Data = await new Promise((resolve) => {
+                const r = new FileReader();
+                r.onload = (e) => resolve(e.target.result);
+                r.readAsDataURL(file);
             });
         } else {
-            // For Raster, Resize Client-Side first to save bandwidth
-            base64Data = await resizeImage(file, 800);
+            // Resize Raster Images
+            if (debugLog) debugLog.innerHTML += `<div>> Resizing image to 1024px...</div>`;
+            try {
+                base64Data = await resizeImage(file, 1024); // Resize to max 1024px
+            } catch (err) {
+                console.error("Resize failed", err);
+                if (debugLog) debugLog.innerHTML += `<div style="color:red">> Resize failed. Using original.</div>`;
+                // Fallback
+                base64Data = await new Promise((resolve) => {
+                    const r = new FileReader();
+                    r.onload = (e) => resolve(e.target.result);
+                    r.readAsDataURL(file);
+                });
+            }
         }
 
-        const options = {
-            mode: isSvg ? 'svg' : 'raster',
-            width: parseFloat(ui.inputImgWidth.value) || 0.10,
-            x: 0, // Force 0 so we can transform client-side
-            y: 0,
-            rotation: 0,
-            threshold: parseInt(ui.inputImgThreshold.value) || 100,
-            inverted: false
-        };
+        if (debugLog) debugLog.innerHTML += `<div>> Params: ${options.width}m, Thresh: ${options.threshold}</div>`;
+        console.log("Processing Image...", options);
+        API.log("Processing Image...");
 
-        // Call Backend
-        const patches = await window.eel.py_process_image(base64Data, options)();
+        // Call Backend with Neutral Parameters for Client-Side Transform
+        // We request width=1.0, x=0, y=0, rot=0 to get normalized patches
+        const neutralOptions = { ...options, width: 1.0, x: 0, y: 0, rotation: 0 };
 
-        if (patches) {
-            console.log(`Received ${patches.length} patches from backend.`);
-            state.rawImagePatches = patches;
-            updateImagePreviewTransforms(); // Update preview with current transforms
-            showImageStatus("IMMAGINE PROCESSATA CON SUCCESSO");
+        const t0 = performance.now();
+        const patches = await window.eel.py_process_image(base64Data, neutralOptions)();
+        const t1 = performance.now();
+
+        const timeSeconds = ((t1 - t0) / 1000).toFixed(2);
+        if (debugLog) debugLog.innerHTML += `<div style="color: lightgreen">> Done in ${timeSeconds}s.</div>`;
+        if (debugLog) debugLog.innerHTML += `<div>> Found ${patches.length} contours.</div>`;
+
+        console.log(`Received ${patches.length} patches.`);
+        API.log(`Image Processed: ${patches.length} segments in ${timeSeconds}s.`);
+
+        // Store RAW patches (Normalized)
+        state.rawImagePatches = patches;
+
+        // Initial Update
+        updateImagePreviewTransforms();
+
+        if (patches.length === 0) {
+            if (debugLog) debugLog.innerHTML += `<div style="color: var(--danger-color)">> No paths found.</div>`;
+            alert("No contours found! Try lowering the Threshold.");
         } else {
-            alert("Image processing failed or returned no paths.");
+            if (canvasHandler) {
+                canvasHandler.animate(); // Force redraw
+            }
+        }
+
+        if (patches.length === 0) {
+            if (debugLog) debugLog.innerHTML += `<div style="color: var(--danger-color)">> No paths found.</div>`;
+            alert("No contours found! Try lowering the Threshold.");
+        } else {
+            if (canvasHandler) {
+                canvasHandler.animate(); // Force redraw
+                // Optional: auto-move viewport if needed, but for now just static
+            }
         }
 
     } catch (e) {
-        console.error("Image Process Error:", e);
+        console.error("Image Processing Failed:", e);
+        if (debugLog) debugLog.innerHTML += `<div style="color: var(--danger-color)">> ERROR: ${e}</div>`;
         alert("Error processing image: " + e);
     } finally {
-        if (loadingEl) loadingEl.classList.add('hidden');
+        // Hide Loader
+        if (loader) loader.classList.add('hidden');
+
+        // Reset Button
+        if (btnProcess) {
+            btnProcess.textContent = btnProcess.getAttribute('data-original-text') || "PROCESS";
+            btnProcess.disabled = false;
+        }
     }
 }
 
-function updateImagePreviewTransforms() {
-    if (!state.rawImagePatches || state.rawImagePatches.length === 0) return;
+function confirmImage() {
+    if (!state.imagePreviewPatches || state.imagePreviewPatches.length === 0) {
+        alert("No image processed to confirm.");
+        return;
+    }
 
-    const offX = parseFloat(ui.inputImgX.value) || 0.20;
-    const offY = parseFloat(ui.inputImgY.value) || 0.0;
-    const rotDeg = parseFloat(ui.inputImgRotation.value) || 0;
-    const rotRad = rotDeg * (Math.PI / 180);
+    // Commit to Main Trajectory
+    // Convert patches (dicts) to Lines in Trajectory
+    const settings = state.settings;
 
-    const transformedPatches = [];
+    let count = 0;
+    // We treat image as a series of connected or disconnected lines.
+    // The patches are usually continuous contours.
 
-    state.rawImagePatches.forEach(patch => {
-        if (patch.type !== 'line') return; // Only process lines for now
+    state.imagePreviewPatches.forEach(patch => {
+        // patch.points is [[x,y], [x,y], ...]
+        // patch.type is 'line' (mostly)
 
-        const newPoints = patch.points.map(p => {
-            const x = p[0];
-            const y = p[1];
+        const pts = patch.points;
+        if (pts.length < 2) return;
 
-            // Rotate
-            const rx = x * Math.cos(rotRad) - y * Math.sin(rotRad);
-            const ry = x * Math.sin(rotRad) + y * Math.cos(rotRad);
+        // Move to start of patch (Jump)
+        // patch.points are in Absolute Meters inside the Workspace
+        // We create Points with ACT values.
 
-            // Translate
-            const tx = rx + offX;
-            const ty = ry + offY;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const p1 = new Point(0, 0, settings);
+            p1.actX = pts[i][0];
+            p1.actY = pts[i][1];
 
-            return [tx, ty];
-        });
+            const p2 = new Point(0, 0, settings);
+            p2.actX = pts[i + 1][0];
+            p2.actY = pts[i + 1][1];
 
-        transformedPatches.push({
-            type: 'line',
-            points: newPoints,
-            data: patch.data
-        });
+            // First segment of a patch should be a Jump if not continuous with previous
+            // But Trajectory class handles additions.
+            // If we just add lines, they are segments.
+            // We need to know if we PenUp to p1.
+            // Logic:
+            // If i==0, this is start of a contour. We should PenUp to it.
+            // But wait, add_line(p1, p2, isJump) ?
+            // add_line(start, end, penUp)
+            // Check state.points. If empty, just start.
+
+            const isStartOfContour = (i === 0);
+            let penUp = false;
+
+            // If it's the very first point of the contour, we need to jump to it?
+            // Not exactly. add_line adds a segment from p1 to p2.
+            // Does it imply we are AT p1?
+            // If state.points is not empty, we are at last point.
+            // So if i=0, we need a Jump from last point to p1.
+
+            if (isStartOfContour) {
+                if (state.points.length > 0) {
+                    const last = state.points[state.points.length - 1];
+                    // Jump line: Last -> P1
+                    state.trajectory.add_line(last, p1, true);
+                }
+                state.points.push(p1);
+            }
+
+            // Segment: P1 -> P2 (PenDown)
+            state.trajectory.add_line(p1, p2, false);
+            state.points.push(p2);
+            count++;
+        }
     });
 
-    state.imagePreviewPatches = transformedPatches;
-    if (typeof canvasHandler !== 'undefined' && canvasHandler) canvasHandler.animate();
+    console.log(`Added ${count} lines from image.`);
+    API.log(`Image Added: ${count} segments.`);
+
+    // Clear Preview
+    state.imagePreviewPatches = [];
+
+    // Save State for Undo
+    state.saveState();
+    updateUndoRedoUI();
+
+    if (canvasHandler) canvasHandler.animate();
+
+    // Switch to Drawing Mode to see results
+    setAppMode('drawing');
+    alert("Image trajectory added to workspace!");
 }
 
-// Client-side Resize for Raster
-function resizeImage(file, maxDim) {
+// Helper to resize image client-side to prevent large payload websocket errors
+function resizeImage(file, maxWidth) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
-                let w = img.width;
-                let h = img.height;
-                let scale = 1;
-                if (w > maxDim || h > maxDim) {
-                    scale = maxDim / Math.max(w, h);
-                }
-                w *= scale;
-                h *= scale;
-
                 const canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
-                resolve(canvas.toDataURL(file.type));
+                ctx.drawImage(img, 0, 0, width, height);
+                // Return compressed JPEG data URL
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
             };
             img.onerror = reject;
             img.src = e.target.result;
         };
+        reader.onerror = reject;
         reader.readAsDataURL(file);
     });
 }
 
-// Override confirmImage to add to trajectory
-function confirmImage() {
-    console.log("confirmImage called");
+function updateImagePreviewTransforms() {
+    if (!state.rawImagePatches || state.rawImagePatches.length === 0) return;
 
-    if (!state.imagePreviewPatches || state.imagePreviewPatches.length === 0) {
-        console.warn("No image patches to confirm.");
-        alert("Nessuna traiettoria da confermare. Premi PRIMA 'Process Process'!");
-        return;
-    }
+    // Read UI Params
+    const width = parseFloat(ui.inputImgWidth.value) || 0.10;
+    const offX = parseFloat(ui.inputImgX.value) || 0.20;
+    const offY = parseFloat(ui.inputImgY.value) || 0.00; // Y is UP
+    const rotDeg = parseFloat(ui.inputImgRotation.value) || 0;
+    const rotRad = (rotDeg * Math.PI) / 180;
 
-    // Use the transformed patches
-    const patches = state.imagePreviewPatches;
-    console.log(`Confirming ${patches.length} patches...`);
+    // Apply Transform to each point
+    // Original Backend Logic:
+    // Scale: width (since raw is normalized to 1)
+    // Rotate: around (0,0) center of shape
+    // Translate: +offX, +offY 
+    // Backend returns raw points centered at (width/2, height/2) usually?
+    // Wait, we asked backend to normalize with Width=1.0.
+    // Backend logic:
+    // scale = width_m / orig_w
+    // center_x = (min_x + max_x) / 2
+    // tx = (px - center_x) * scale [Zero Center X]
+    // ty = - (py - center_y) * scale [Zero Center Y, Flip Y]
 
-    state.saveState(); // Save before adding
+    // So RAW data from backend (with Width=1, X=0, Y=0, Rot=0) is:
+    // - Centered at (0,0)
+    // - Width approx 1.0 (meters)
+    // - Y flipped (Robot Coordinates)
 
-    let addedCount = 0;
-    patches.forEach((patch, index) => {
-        const pts = patch.points;
-        if (!pts || pts.length < 2) return;
+    // We just need to Scale (again?), Rotate, Translate.
+    // Wait, backend scaled it to 1.0m. We want target Width.
+    // So we apply factor: UserWidth / 1.0 = UserWidth.
 
-        // If not the first patch, move to the start of this patch with pen up
-        if (index > 0 || state.points.length > 0) {
-            const [spx, spy] = abs2rel(pts[0][0], pts[0][1], state.settings);
-            const startPoint = new Point(spx, spy, state.settings);
+    const scale = width;
+    const matches = [];
 
-            let lastPoint = null;
-            if (state.points.length > 0) {
-                lastPoint = state.points[state.points.length - 1];
-            }
+    state.rawImagePatches.forEach(patch => {
+        const transformedPoints = [];
+        patch.points.forEach(pt => {
+            const x0 = pt[0];
+            const y0 = pt[1];
 
-            if (lastPoint) {
-                state.trajectory.add_line(lastPoint, startPoint, true); // Pen Up Jump
-            }
-            state.points.push(startPoint);
-        } else {
-            // First point of first patch
-            const [p0x, p0y] = abs2rel(pts[0][0], pts[0][1], state.settings);
-            const p0 = new Point(p0x, p0y, state.settings);
-            state.points.push(p0);
-        }
+            // 1. Scale
+            const x1 = x0 * scale;
+            const y1 = y0 * scale;
 
-        for (let i = 0; i < pts.length - 1; i++) {
-            // Convert Meters (pts) to Pixels (abs2rel) because Point() expects Pixels
-            const [p1x, p1y] = abs2rel(pts[i][0], pts[i][1], state.settings);
-            const [p2x, p2y] = abs2rel(pts[i + 1][0], pts[i + 1][1], state.settings);
+            // 2. Rotate
+            const x2 = x1 * Math.cos(rotRad) - y1 * Math.sin(rotRad);
+            const y2 = x1 * Math.sin(rotRad) + y1 * Math.cos(rotRad);
 
-            const p1 = new Point(p1x, p1y, state.settings);
-            const p2 = new Point(p2x, p2y, state.settings);
+            // 3. Translate
+            const x3 = x2 + offX;
+            const y3 = y2 + offY;
 
-            state.trajectory.add_line(p1, p2, false); // Pen Down
-            state.points.push(p2);
-        }
-        addedCount++;
+            transformedPoints.push([x3, y3]);
+        });
+
+        matches.push({
+            type: patch.type,
+            points: transformedPoints,
+            data: patch.data
+        });
     });
 
-
-
-    console.log(`Confirmed ${addedCount} contours.`);
-    showImageStatus("TRAIETTORIA COMPLETATA");
-
-    // Switch back to Drawing after delay to show message
-    setTimeout(() => {
-        ui.btnAppModeDrawing.click();
-
-        // Clear Preview
-        state.rawImagePatches = [];
-        state.imagePreviewPatches = [];
-        if (ui.imgPreviewImg) ui.imgPreviewImg.src = "";
-
-        if (canvasHandler) canvasHandler.animate();
-    }, 1500);
+    state.imagePreviewPatches = matches;
+    if (canvasHandler) canvasHandler.animate();
 }
 
-function showImageStatus(msg, duration = 3000) {
-    const el = document.getElementById('image-status-msg');
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.remove('hidden');
-    setTimeout(() => {
-        el.classList.add('hidden');
-    }, duration);
-}
+// Attach Listeners for Realtime Update
+[ui.inputImgWidth, ui.inputImgX, ui.inputImgY, ui.inputImgRotation].forEach(input => {
+    if (input) {
+        input.addEventListener('input', updateImagePreviewTransforms);
+    }
+});

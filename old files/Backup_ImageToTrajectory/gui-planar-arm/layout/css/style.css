@@ -261,7 +261,69 @@ canvas {
 
 }
 
+/* Modal Styling */
+.modal {
+    display: flex;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    justify-content: center;
+    align-items: center;
+}
 
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    width: 400px;
+    max-width: 90%;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    position: relative;
+    color: var(--text-color);
+}
+
+.close-modal {
+    position: absolute;
+    right: 15px;
+    top: 10px;
+    font-size: 24px;
+    cursor: pointer;
+    color: #888;
+}
+
+.close-modal:hover {
+    color: var(--text-color);
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 0.9em;
+    color: #aaa;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    border-radius: 4px;
+}
 
 /* Dropdown Select */
 .dropdown-select {
@@ -274,34 +336,21 @@ canvas {
     outline: none;
 }
 
-/* Image Tools */
-.image-preview-container {
-    background-color: var(--bg-tertiary);
-    border: 1px dashed var(--text-muted);
-    border-radius: var(--border-radius-md);
-    position: relative;
-    /* content centered via flex in html style */
-}
-
-.image-preview-container img {
-    object-fit: contain;
-}
-
-#image-loading {
+.custom-stamp-btn {
+    padding: 6px 12px;
     font-weight: bold;
-    animation: pulse 1.5s infinite;
-}
 
-@keyframes pulse {
-    0% {
-        opacity: 0.6;
+    /* Progress Bar Animation */
+    @keyframes indeterminate {
+        0% {
+            left: -50%;
+        }
+
+        100% {
+            left: 100%;
+        }
     }
 
-    50% {
-        opacity: 1;
+    .progress-indeterminate {
+        animation: indeterminate 1.5s infinite linear;
     }
-
-    100% {
-        opacity: 0.6;
-    }
-}

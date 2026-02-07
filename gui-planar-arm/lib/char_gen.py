@@ -16,6 +16,9 @@ Supports 'line' (list of points) and 'ellipse' (parametric).
 
 import math
 
+# Characters that should use the slower "curve" profile
+CURVED_CHARS = {'B', 'C', 'D', 'G', 'J', 'O', 'P', 'Q', 'R', 'S', 'U', '0', '2', '3', '5', '6', '8', '9'}
+
 # Character definitions
 # Format: List of Primitives.
 # Primitive: 
@@ -61,7 +64,7 @@ FONT_DEFS = {
           {'type': 'ellipse', 'center': (0.5, 0.25), 'radii': (0.4, 0.25), 'arc': (90, -90)},
           {'type': 'line', 'points': [(0.5,0), (0,0)]}],
           
-    'C': [{'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.5, 0.5), 'arc': (315, 45)}], 
+    'C': [{'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.5, 0.5), 'arc': (45, 315)}], 
     
     'D': [{'type': 'ellipse', 'center': (0.4, 0.5), 'radii': (0.6, 0.5), 'arc': (-90, 90)}, 
           {'type': 'line', 'points': [(0.4, 1), (0, 1), (0, 0), (0.4, 0)]}],
@@ -118,46 +121,8 @@ FONT_DEFS = {
           {'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.45, 0.5), 'arc': (0, -110)}], # Extended tail
           
     ' ': [],
-    '-': [{'type': 'line', 'points': [(0.1, 0.5), (0.9, 0.5)]}],
-    '.': [{'type': 'line', 'points': [(0.45,0), (0.55,0), (0.55,0.1), (0.45,0.1), (0.45,0)]}], 
-    ',': [{'type': 'line', 'points': [(0.5, 0.2), (0.4, 0)]}],
-    ':': [{'type': 'line', 'points': [(0.45,0.7), (0.55,0.7), (0.55,0.8), (0.45,0.8), (0.45,0.7)]},
-          {'type': 'line', 'points': [(0.45,0.2), (0.55,0.2), (0.55,0.3), (0.45,0.3), (0.45,0.2)]}],
-    ';': [{'type': 'line', 'points': [(0.45,0.7), (0.55,0.7), (0.55,0.8), (0.45,0.8), (0.45,0.7)]},
-          {'type': 'line', 'points': [(0.5, 0.2), (0.4, 0)]}],
-    '!': [{'type': 'line', 'points': [(0.5, 1), (0.5, 0.3)]},
-          {'type': 'line', 'points': [(0.45,0), (0.55,0), (0.55,0.1), (0.45,0.1), (0.45,0)]}],
-    '?': [{'type': 'ellipse', 'center': (0.5, 0.75), 'radii': (0.4, 0.25), 'arc': (0, 180)},
-          {'type': 'line', 'points': [(0.9, 0.75), (0.5, 0.3)]},
-          {'type': 'line', 'points': [(0.45,0), (0.55,0), (0.55,0.1), (0.45,0.1), (0.45,0)]}],
-    "'": [{'type': 'line', 'points': [(0.5, 1), (0.5, 0.7)]}],
-    '"': [{'type': 'line', 'points': [(0.3, 1), (0.3, 0.7)]},
-          {'type': 'line', 'points': [(0.7, 1), (0.7, 0.7)]}],
-    
-    # Math
-    '+': [{'type': 'line', 'points': [(0.5, 0.2), (0.5, 0.8)]},
-          {'type': 'line', 'points': [(0.2, 0.5), (0.8, 0.5)]}],
-    '=': [{'type': 'line', 'points': [(0.1, 0.65), (0.9, 0.65)]},
-          {'type': 'line', 'points': [(0.1, 0.35), (0.9, 0.35)]}],
-    '/': [{'type': 'line', 'points': [(0.2, 0), (0.8, 1)]}],
-    '*': [{'type': 'line', 'points': [(0.5, 0.2), (0.5, 0.8)]}, # +
-          {'type': 'line', 'points': [(0.2, 0.5), (0.8, 0.5)]},
-          {'type': 'line', 'points': [(0.2, 0.2), (0.8, 0.8)]}, # x
-          {'type': 'line', 'points': [(0.2, 0.8), (0.8, 0.2)]}],
-    '(': [{'type': 'ellipse', 'center': (0.8, 0.5), 'radii': (0.3, 0.6), 'arc': (120, 240)}],
-    ')': [{'type': 'ellipse', 'center': (0.2, 0.5), 'radii': (0.3, 0.6), 'arc': (60, -60)}],
-    
-    # Special
-    '@': [{'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.45, 0.45), 'arc': (0, 270)}, # Outer
-          {'type': 'ellipse', 'center': (0.5, 0.4), 'radii': (0.25, 0.25), 'arc': (0, 360)}], # Inner 'a'ish
-    '#': [{'type': 'line', 'points': [(0.35, 1), (0.35, 0)]},
-          {'type': 'line', 'points': [(0.65, 1), (0.65, 0)]},
-          {'type': 'line', 'points': [(0.1, 0.65), (0.9, 0.65)]},
-          {'type': 'line', 'points': [(0.1, 0.35), (0.9, 0.35)]}],
-    '_': [{'type': 'line', 'points': [(0, 0), (1, 0)]}],
-    '&': [{'type': 'ellipse', 'center': (0.5, 0.75), 'radii': (0.3, 0.25), 'arc': (0, 360)}, # Top loop
-          {'type': 'ellipse', 'center': (0.5, 0.3), 'radii': (0.4, 0.3), 'arc': (0, 360)},   # Bottom loop
-          {'type': 'line', 'points': [(0.9, 0), (0.5, 1)]}], # Slash through
+    '-': [{'type': 'line', 'points': [(0, 0.5), (1, 0.5)]}],
+    '.': [{'type': 'line', 'points': [(0.4,0), (0.6,0), (0.6,0.2), (0.4,0.2), (0.4,0)]}], 
 }
 
 def get_char_strokes(char):
@@ -176,10 +141,10 @@ def sample_ellipse(center, radii, arc, steps=None):
     end_rad = math.radians(arc[1])
     
     # Adaptive resolution if steps not provided
-    # Aim for ~5 degrees per step for good performance (was 2 for ultra quality)
+    # Aim for ~2 degrees per step for high smoothness (Ultra Quality)
     if steps is None:
         span_deg = abs(arc[1] - arc[0])
-        steps = max(12, int(span_deg / 5)) # Every 5 degrees -> 72 points for a circle
+        steps = max(20, int(span_deg / 2)) # Every 2 degrees -> 180 points for a circle
     
     points = []
     
@@ -198,21 +163,66 @@ def sample_ellipse(center, radii, arc, steps=None):
 
 def text_to_traj(text: str, start_pos: tuple, font_size: float, char_spacing: float):
     """
-    Generates a list of line segments for the given text.
-    Handles 'line' and 'ellipse' primitives by sampling them into dense lines.
+    Generates a list of patches for the given text.
+    Groups contiguous segments into 'polyline' patches for smoother execution.
     """
     traj_patches = []
     cursor_x, cursor_y = start_pos
     
+    pending_points = []
+
+    def flush_pending():
+        nonlocal pending_points
+        if not pending_points: return
+
+        # If only one point (shouldn't happen with correct logic, but safety),
+        # cannot make a polyline.
+        if len(pending_points) < 2:
+            pending_points = []
+            return
+            
+        # Determine profile based on character type
+        # Ideally we know which character we are processing. 
+        # But 'pending_points' could theoretically span characters if we didn't force flush on space/newline?
+        # The logic below flushes on space/newline, so pending_points usually belongs to one word or segment.
+        # But wait, we iterate char by char.
+        # We need to know if the CURRENT pending points belong to a curved char.
+        # We can track the "most recent character" or just assign 'curve' if ANY char in the buffer was curved?
+        # Actually, `text_to_traj` iterates chars. We should probably track the `current_profile` property.
+        
+        patch_profile = 'curve' if is_curved_sequence else 'linear'
+
+        patch = {
+            'type': 'polyline',
+            'points': pending_points,
+            'data': {'penup': False, 'profile': patch_profile}
+        }
+        traj_patches.append(patch)
+        pending_points = []
+        # Reset curve flag after flush? Or is it handled by char loop?
+        # It's better to flush when profile changes.
+
+    is_curved_sequence = False # Track if current pending sequence contains curved shapes
+
     for char in text:
         if char == '\n':
+            flush_pending()
             cursor_x = start_pos[0]
             cursor_y -= font_size * 1.5 
             continue
 
         if char == ' ':
+            flush_pending()
             cursor_x += (font_size * 0.8) + char_spacing
             continue
+
+        # Check if we need to switch profile
+        char_is_curved = char.upper() in CURVED_CHARS
+        if pending_points and char_is_curved != is_curved_sequence:
+             # Profile mismatch, flush previous
+             flush_pending()
+        
+        is_curved_sequence = char_is_curved
 
         primitives = get_char_strokes(char)
         char_width = font_size
@@ -235,31 +245,118 @@ def text_to_traj(text: str, start_pos: tuple, font_size: float, char_spacing: fl
                 wy = cursor_y + p[1] * font_size
                 world_points.append((wx, wy))
             
-            # 3. Create Segments
-            for i in range(len(world_points) - 1):
-                p0 = world_points[i]
-                p1 = world_points[i+1]
+            # 3. Accumulate Points for Polyline
+            start_pt = world_points[0]
+            
+            # Check continuity with pending points
+            if pending_points:
+                last_pt = pending_points[-1]
+                dist = ((last_pt[0]-start_pt[0])**2 + (last_pt[1]-start_pt[1])**2)**0.5
                 
-                patch = {
-                    'type': 'line',
-                    'points': [p0, p1],
-                    'data': {'penup': False}
-                }
-                
-                # Check discontinuity with previous patch to insert PENUP
-                if traj_patches:
-                    prev_end = traj_patches[-1]['points'][1]
-                    dist = ((prev_end[0]-p0[0])**2 + (prev_end[1]-p0[1])**2)**0.5
+                if dist > 0.001:
+                    # Discontinuity -> End current polyline
+                    flush_pending()
                     
-                    if dist > 0.001:
+                    # Add PENUP from previous patch end to new start
+                    if traj_patches:
+                        prev_end = traj_patches[-1]['points'][-1]
                         traj_patches.append({
                             'type': 'line',
-                            'points': [prev_end, p0],
-                            'data': {'penup': True}
+                            'points': [prev_end, start_pt],
+                            'data': {'penup': True, 'profile': 'jump'}
                         })
+                    pending_points.append(start_pt)
+                else:
+                    # Continuous - CHECK FOR SHARP CORNER
+                    # We have pending_points (last_pt) and world_points (start_pt is 0, next is 1)
+                    # We need the vector ending at last_pt (v_in) and vector starting at start_pt (v_out)
+                    
+                    if len(pending_points) >= 2 and len(world_points) >= 2:
+                        p_prev = pending_points[-2]
+                        p_curr = pending_points[-1] # == start_pt roughly
+                        p_next = world_points[1] # Next point in new primitive
+                        
+                        v_in = (p_curr[0]-p_prev[0], p_curr[1]-p_prev[1])
+                        v_out = (p_next[0]-p_curr[0], p_next[1]-p_curr[1])
+                        
+                        mag_in = math.sqrt(v_in[0]**2 + v_in[1]**2)
+                        mag_out = math.sqrt(v_out[0]**2 + v_out[1]**2)
+                        
+                        if mag_in > 1e-6 and mag_out > 1e-6:
+                            dot = v_in[0]*v_out[0] + v_in[1]*v_out[1]
+                            similarity = dot / (mag_in * mag_out)
+                            # similarity = cos(theta). 1=straight, 0=90deg turn, -1=180turn
+                            # Threshold: if angle > 45 deg, split.
+                            # 45 deg -> cos(45) = 0.707
+                            # So if similarity < 0.707, it's a sharp turn.
+                            if similarity < 0.707:
+                                # Sharp Corner Detected!
+                                flush_pending()
+                                # We don't need a pen-up, just a split to force zero velocity stop.
+                                pending_points.append(start_pt)
+                            else:
+                                # Smooth enough to continue
+                                pass
+                        else:
+                             pass
+                    
+                    pass 
+            else:
+                 # No pending points. Check continuity with previous COMPLETED patch for PenUp
+                 if traj_patches:
+                     # Get last point of last patch
+                     last_patch_points = traj_patches[-1]['points']
+                     prev_end = last_patch_points[-1] # Works for polyline (list) or line (2-list)
+                     
+                     dist = ((prev_end[0]-start_pt[0])**2 + (prev_end[1]-start_pt[1])**2)**0.5
+                     if dist > 0.001:
+                         traj_patches.append({
+                            'type': 'line',
+                            'points': [prev_end, start_pt],
+                            'data': {'penup': True, 'profile': 'jump'}
+                        })
+                 pending_points.append(start_pt)
+
+            # Append new points
+            # If we just connected continuously, start_pt might verify == last_pt. 
+            # If so, skip it to avoid zero-length segment?
+            # Or just append. Polyline logic handle 0 length? Better avoid.
+            start_idx = 1 if (len(pending_points) > 1 and pending_points[-2] == start_pt) else 1
+            # Actually, `pending_points` already has `start_pt` added in the logic above (either appended or new).
+            # Wait, `pending_points.append(start_pt)` is inside the if/else blocks.
+            # So `start_pt` is IN `pending_points`.
+            # We need to extend `world_points[1:]`.
+            
+            # Append new points loop
+            for i in range(1, len(world_points)):
+                next_pt = world_points[i]
                 
-                traj_patches.append(patch)
+                # Check for sharp corner with previous segment
+                if len(pending_points) >= 2:
+                    p_prev = pending_points[-2]
+                    p_curr = pending_points[-1]
+                    p_next = next_pt
+                    
+                    v_in = (p_curr[0]-p_prev[0], p_curr[1]-p_prev[1])
+                    v_out = (p_next[0]-p_curr[0], p_next[1]-p_curr[1])
+                    
+                    mag_in = math.sqrt(v_in[0]**2 + v_in[1]**2)
+                    mag_out = math.sqrt(v_out[0]**2 + v_out[1]**2)
+                    
+                    if mag_in > 1e-6 and mag_out > 1e-6:
+                        dot = v_in[0]*v_out[0] + v_in[1]*v_out[1]
+                        similarity = dot / (mag_in * mag_out)
+                        if similarity < 0.707: # 45 degrees
+                            # Sharp corner!
+                            flush_pending()
+                            # Start new segment from the vertex
+                            pending_points.append(p_curr)
+                            
+                pending_points.append(next_pt)
 
         cursor_x += (font_size * 0.8) + char_spacing
+
+    # Flush any remaining
+    flush_pending()
 
     return traj_patches

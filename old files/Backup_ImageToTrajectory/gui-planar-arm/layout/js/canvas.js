@@ -60,8 +60,8 @@ export class CanvasHandler {
         this.state.settings.origin.x = size / 2;
         this.state.settings.origin.y = size / 2;
 
-        // Scale: Robot diameter (0.128 + 0.144) * 2 = 0.544 -> Usable Diameter
-        this.state.settings.m_p = 0.544 / usableSize;
+        // Scale: Robot diameter (0.328 * 2) -> Usable Diameter
+        this.state.settings.m_p = (0.328 * 2) / usableSize;
 
         // Store visual radius for drawing
         this.workspaceRadius = radius;
@@ -650,81 +650,47 @@ export class CanvasHandler {
         // Helper to draw patches
         const drawPatches = (patches, isAccumulated = false) => {
             for (let patch of patches) {
-                if (patch.type === 'line' || patch.type === 'polyline') {
-                    // Check if it's a segment or polyline
-                    // Backend returns 'line' with multiple points for image/text
-                    const points = patch.points;
-                    if (!points || points.length < 2) continue;
+                if (patch.type === 'line') {
+                    const p0 = patch.points[0];
+                    const p1 = patch.points[1];
 
-                    if (points.length === 2) {
-                        // Simple Line
-                        const p0 = points[0];
-                        const p1 = points[1];
-                        const x0 = origin.x + p0[0] / mp;
-                        const y0 = origin.y - p0[1] / mp;
-                        const x1 = origin.x + p1[0] / mp;
-                        const y1 = origin.y - p1[1] / mp;
+                    // Convert world meters to canvas pixels
+                    const x0 = origin.x + p0[0] / mp;
+                    const y0 = origin.y - p0[1] / mp;
+                    const x1 = origin.x + p1[0] / mp;
+                    const y1 = origin.y - p1[1] / mp;
 
-                        ctx.beginPath();
-                        ctx.moveTo(x0, y0);
-                        ctx.lineTo(x1, y1);
-                    } else {
-                        // Polyline
-                        ctx.beginPath();
-                        const p0 = points[0];
-                        ctx.moveTo(origin.x + p0[0] / mp, origin.y - p0[1] / mp);
-                        for (let i = 1; i < points.length; i++) {
-                            const pi = points[i];
-                            ctx.lineTo(origin.x + pi[0] / mp, origin.y - pi[1] / mp);
-                        }
-                    }
-
-                    if (patch.data && patch.data.penup) {
+                    ctx.beginPath();
+                    ctx.moveTo(x0, y0);
+                    ctx.lineTo(x1, y1);
+                    if (patch.data.penup) {
                         ctx.strokeStyle = 'rgba(255, 165, 0, 0.3)';
                         ctx.setLineDash([5, 5]);
                         ctx.lineWidth = 1.0;
                     } else {
+                        // Accumulated texts in darker color, current preview in black
                         ctx.strokeStyle = isAccumulated ? '#333333' : '#000000';
                         ctx.setLineDash([]);
                         ctx.lineWidth = 2.0;
                     }
                     ctx.stroke();
-
-
                 }
             }
         };
 
-        if (this.state.accumulatedTextPatches) drawPatches(this.state.accumulatedTextPatches, true);
-        if (this.state.textPreview) drawPatches(this.state.textPreview, false);
+        // 1. Draw accumulated text patches (already saved)
+        if (this.state.accumulatedTextPatches && this.state.accumulatedTextPatches.length > 0) {
+            ctx.lineWidth = 2;
+            drawPatches(this.state.accumulatedTextPatches, true);
+        }
+
+        // 2. Draw current text preview (text being typed)
+        if (this.state.textPreview && this.state.textPreview.length > 0) {
+            ctx.lineWidth = 2;
+            drawPatches(this.state.textPreview, false);
+        }
 
         ctx.setLineDash([]);
-    }
-
-    drawImagePreview() {
-        if (!this.state.imagePreviewPatches || this.state.imagePreviewPatches.length === 0) return;
-
-        const ctx = this.ctx;
-        const mp = this.state.settings.m_p;
-        const origin = this.state.settings.origin;
-
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = '#00bbff'; // Cyan/Blue
-
-        for (let patch of this.state.imagePreviewPatches) {
-            // patches are {type: 'line', points: [[x,y], ...]}
-            if (!patch.points || patch.points.length < 2) continue;
-
-            ctx.beginPath();
-            const p0 = patch.points[0];
-            ctx.moveTo(origin.x + p0[0] / mp, origin.y - p0[1] / mp);
-
-            for (let i = 1; i < patch.points.length; i++) {
-                const pi = patch.points[i];
-                ctx.lineTo(origin.x + pi[0] / mp, origin.y - pi[1] / mp);
-            }
-            ctx.stroke();
-        }
     }
 
     drawImportPreview() {
@@ -853,10 +819,8 @@ export class CanvasHandler {
         // Draw Import Preview (Yellow Ghost)
         this.drawImportPreview();
 
-        // Draw Image Preview (Blue Ghost)
+        // Draw Image Preview (Magenta Ghost)
         this.drawImagePreview();
-
-
 
         // Draw Current Data
 
@@ -918,5 +882,39 @@ export class CanvasHandler {
             }
         }
     }
+    // Draw Image Preview
+    drawImagePreview() {
+        if (!this.state.imagePreviewPatches || this.state.imagePreviewPatches.length === 0) return;
 
+        const ctx = this.ctx;
+        const mp = this.state.settings.m_p;
+        const origin = this.state.settings.origin;
+
+        ctx.lineWidth = 1.5;
+        // Magenta color for image preview (Ghost)
+        ctx.strokeStyle = '#ff00ff';
+
+        for (let item of this.state.imagePreviewPatches) {
+            if (item.type === 'line') {
+                // points: [[x,y], [x,y], ...]
+                const pts = item.points;
+                if (pts.length < 2) continue;
+
+                ctx.beginPath();
+
+                // Move to first point
+                const x0 = origin.x + pts[0][0] / mp;
+                const y0 = origin.y - pts[0][1] / mp;
+                ctx.moveTo(x0, y0);
+
+                for (let i = 1; i < pts.length; i++) {
+                    const xi = origin.x + pts[i][0] / mp;
+                    const yi = origin.y - pts[i][1] / mp;
+                    ctx.lineTo(xi, yi);
+                }
+
+                ctx.stroke();
+            }
+        }
+    }
 }
