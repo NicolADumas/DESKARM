@@ -1,8 +1,0 @@
-Open the GUI.
-Click the new 🖼️ button to switch to Image Mode.
-Upload a sample image (e.g., a simple shape).
-Verify the preview appears correctly.
-Adjust width/offset/rotation and verify the blue preview lines update in real-time on the canvas.
-Click "PROCESS" and verify contours are detected.
-Click "CONFIRM" and verify the trajectory is added to the main workspace (switching back to Drawing mode).
-Click "Generate Trajectory" and verify the robot (simulated or real) follows the image-based path.

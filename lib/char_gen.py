@@ -17,7 +17,7 @@ Supports 'line' (list of points) and 'ellipse' (parametric).
 import math
 
 # Characters that should use the slower "curve" profile
-CURVED_CHARS = {'B', 'C', 'D', 'G', 'J', 'O', 'P', 'Q', 'R', 'S', 'U', '0', '2', '3', '5', '6', '8', '9'}
+CURVED_CHARS = {'B', 'C', 'D', 'G', 'J', 'O', 'P', 'Q', 'R', 'S', 'U', '0', '2', '3', '5', '6', '8', '9', '?', '&', '@', '(', ')', '{', '}', "'", '"', '$', '%'}
 
 # Character definitions
 # Format: List of Primitives.
@@ -121,8 +121,107 @@ FONT_DEFS = {
           {'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.45, 0.5), 'arc': (0, -110)}], # Extended tail
           
     ' ': [],
-    '-': [{'type': 'line', 'points': [(0, 0.5), (1, 0.5)]}],
-    '.': [{'type': 'line', 'points': [(0.4,0), (0.6,0), (0.6,0.2), (0.4,0.2), (0.4,0)]}], 
+    '-': [{'type': 'line', 'points': [(0.2, 0.5), (0.8, 0.5)]}],
+    '_': [{'type': 'line', 'points': [(0, 0), (1, 0)]}],
+    '.': [{'type': 'ellipse', 'center': (0.5, 0.1), 'radii': (0.05, 0.05), 'arc': (0, 360)}], # Small Circle Dot
+    ',': [{'type': 'ellipse', 'center': (0.5, 0.1), 'radii': (0.05, 0.05), 'arc': (0, 360)}, # Dot
+          {'type': 'line', 'points': [(0.5, 0.05), (0.4, -0.1)]}], # Tail
+          
+    ':': [{'type': 'ellipse', 'center': (0.5, 0.1), 'radii': (0.05, 0.05), 'arc': (0, 360)}, # Bottom dot
+          {'type': 'ellipse', 'center': (0.5, 0.6), 'radii': (0.05, 0.05), 'arc': (0, 360)}], # Top dot
+          
+    ';': [{'type': 'ellipse', 'center': (0.5, 0.1), 'radii': (0.05, 0.05), 'arc': (0, 360)}, # Bottom dot
+          {'type': 'line', 'points': [(0.5, 0.05), (0.4, -0.1)]}, # Tail
+          {'type': 'ellipse', 'center': (0.5, 0.6), 'radii': (0.05, 0.05), 'arc': (0, 360)}], # Top dot
+
+    "'": [{'type': 'line', 'points': [(0.5, 1.0), (0.5, 0.7)]}], # Straight tick
+    '"': [{'type': 'line', 'points': [(0.35, 1.0), (0.35, 0.7)]},
+          {'type': 'line', 'points': [(0.65, 1.0), (0.65, 0.7)]}], # Double straight tick
+
+    '!': [{'type': 'line', 'points': [(0.5, 1), (0.5, 0.35)]}, # Shortened line
+          {'type': 'ellipse', 'center': (0.5, 0.1), 'radii': (0.05, 0.05), 'arc': (0, 360)}], # Dot with gap
+          
+    '?': [{'type': 'ellipse', 'center': (0.5, 0.7), 'radii': (0.3, 0.3), 'arc': (180, -45)}, # Hook
+          {'type': 'line', 'points': [(0.71, 0.48), (0.5, 0.35)]}, # Vertical part shorter
+          {'type': 'ellipse', 'center': (0.5, 0.1), 'radii': (0.05, 0.05), 'arc': (0, 360)}], # Dot with gap
+    
+    # Brackets
+    '(': [{'type': 'ellipse', 'center': (0.7, 0.5), 'radii': (0.3, 0.6), 'arc': (110, 250)}],
+    ')': [{'type': 'ellipse', 'center': (0.3, 0.5), 'radii': (0.3, 0.6), 'arc': (70, -70)}],
+    '[': [{'type': 'line', 'points': [(0.7, 1), (0.3, 1), (0.3, 0), (0.7, 0)]}],
+    ']': [{'type': 'line', 'points': [(0.3, 1), (0.7, 1), (0.7, 0), (0.3, 0)]}],
+    '{': [{'type': 'ellipse', 'center': (0.7, 0.75), 'radii': (0.4, 0.25), 'arc': (90, 210)}, # Top Hook In
+          {'type': 'line', 'points': [(0.354, 0.625), (0.2, 0.5)]}, # Beak In Line
+          {'type': 'line', 'points': [(0.2, 0.5), (0.354, 0.375)]}, # Beak Out Line
+          {'type': 'ellipse', 'center': (0.7, 0.25), 'radii': (0.4, 0.25), 'arc': (150, 270)}], # Bottom Hook Out
+          
+    '}': [{'type': 'ellipse', 'center': (0.3, 0.75), 'radii': (0.4, 0.25), 'arc': (90, -30)}, # Top Hook In
+          {'type': 'line', 'points': [(0.646, 0.625), (0.8, 0.5)]}, # Beak In Line
+          {'type': 'line', 'points': [(0.8, 0.5), (0.646, 0.375)]}, # Beak Out Line
+          {'type': 'ellipse', 'center': (0.3, 0.25), 'radii': (0.4, 0.25), 'arc': (30, -90)}], # Bottom Hook Out
+    
+    # Symbols
+    '*': [{'type': 'line', 'points': [(0.5, 0.8), (0.5, 0.2)]}, # Vertical
+          {'type': 'line', 'points': [(0.2, 0.7), (0.8, 0.3)]}, # Diagonal \
+          {'type': 'line', 'points': [(0.8, 0.7), (0.2, 0.3)]}], # Diagonal /
+          
+    '#': [{'type': 'line', 'points': [(0.2, 0.6), (0.8, 0.6)]}, # Horizontal Top
+          {'type': 'line', 'points': [(0.2, 0.4), (0.8, 0.4)]}, # Horizontal Bottom
+          {'type': 'line', 'points': [(0.35, 0.15), (0.45, 0.85)]}, # Vertical Left (Slanted)
+          {'type': 'line', 'points': [(0.55, 0.15), (0.65, 0.85)]}], # Vertical Right (Slanted)
+          
+    '+': [{'type': 'line', 'points': [(0.1, 0.5), (0.9, 0.5)]},
+          {'type': 'line', 'points': [(0.5, 0.1), (0.5, 0.9)]}],
+    '=': [{'type': 'line', 'points': [(0.1, 0.4), (0.9, 0.4)]},
+          {'type': 'line', 'points': [(0.1, 0.6), (0.9, 0.6)]}],
+    '<': [{'type': 'line', 'points': [(0.8, 1), (0.2, 0.5), (0.8, 0)]}],
+    '>': [{'type': 'line', 'points': [(0.2, 1), (0.8, 0.5), (0.2, 0)]}],
+    '/': [{'type': 'line', 'points': [(0.2, 0), (0.8, 1)]}],
+    '\\': [{'type': 'line', 'points': [(0.2, 1), (0.8, 0)]}], # Escaped backslash
+    '|': [{'type': 'line', 'points': [(0.5, 0), (0.5, 1)]}],
+    
+    '@': [{'type': 'ellipse', 'center': (0.5, 0.4), 'radii': (0.2, 0.2), 'arc': (0, 360)}, # Inner 'a' circle
+          {'type': 'line', 'points': [(0.7, 0.6), (0.7, 0.154)]}, # Inner 'a' vertical - Extended to meet spiral at -60deg
+          {'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.4, 0.4), 'arc': (-60, 270)}], # Spiral starts EXACTLY at line end
+          
+    '&': [{'type': 'line', 'points': [(0.9, 0.05), (0.375, 0.48)]}, # 1. Diagonal Up
+          {'type': 'ellipse', 'center': (0.5, 0.7), 'radii': (0.25, 0.25), 'arc': (240, -60)}, # 2. Top Loop
+          {'type': 'line', 'points': [(0.625, 0.48), (0.375, 0.416)]}, # 3. Diagonal Down (Smoother connection at 120 deg)
+          {'type': 'ellipse', 'center': (0.55, 0.2), 'radii': (0.35, 0.25), 'arc': (120, 360)}], # 4. Bottom Cup (Starts high for tangent)
+          
+    '$': [{'type': 'line', 'points': [(0.5, 1.1), (0.5, -0.1)]}, # Vertical Line (Extend slightly)
+          {'type': 'ellipse', 'center': (0.5, 0.75), 'radii': (0.35, 0.25), 'arc': (25, 270)}, # Top S
+          {'type': 'ellipse', 'center': (0.5, 0.25), 'radii': (0.4, 0.25), 'arc': (90, -155)}], # Bottom S
+          
+    '%': [{'type': 'line', 'points': [(0.2, 0), (0.8, 1)]}, # Diagonal Stroke
+          {'type': 'ellipse', 'center': (0.3, 0.8), 'radii': (0.1, 0.1), 'arc': (0, 360)}, # Top-Left Circle
+          {'type': 'ellipse', 'center': (0.7, 0.2), 'radii': (0.1, 0.1), 'arc': (0, 360)}], # Bottom-Right Circle
+          
+    # Accented Characters (Reuse base strokes + add accent)
+    'À': [{'type': 'line', 'points': [(0,0), (0.5,1), (1,0)]}, 
+          {'type': 'line', 'points': [(0.2, 0.4), (0.8, 0.4)]},
+          {'type': 'line', 'points': [(0.3, 1.4), (0.7, 1.25)]}], # Raised Grave
+          
+    'È': [{'type': 'line', 'points': [(1,0), (0,0), (0,1), (1,1)]}, 
+          {'type': 'line', 'points': [(0,0.5), (0.8,0.5)]},
+          {'type': 'line', 'points': [(0.3, 1.4), (0.7, 1.25)]}], # Raised Grave
+          
+    'É': [{'type': 'line', 'points': [(1,0), (0,0), (0,1), (1,1)]}, 
+          {'type': 'line', 'points': [(0,0.5), (0.8,0.5)]},
+          {'type': 'line', 'points': [(0.3, 1.25), (0.7, 1.4)]}], # Raised Acute
+          
+    'Ì': [{'type': 'line', 'points': [(0.5,0), (0.5,1)]}, 
+          {'type': 'line', 'points': [(0,1), (1,1)]}, 
+          {'type': 'line', 'points': [(0,0), (1,0)]},
+          {'type': 'line', 'points': [(0.3, 1.4), (0.7, 1.25)]}], # Raised Grave
+          
+    'Ò': [{'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.5, 0.5), 'arc': (0, -360)},
+          {'type': 'line', 'points': [(0.3, 1.4), (0.7, 1.25)]}], # Raised Grave
+          
+    'Ù': [{'type': 'line', 'points': [(0, 1), (0, 0.3)]},
+          {'type': 'ellipse', 'center': (0.5, 0.3), 'radii': (0.5, 0.3), 'arc': (180, 360)}, 
+          {'type': 'line', 'points': [(1, 0.3), (1, 1)]},
+          {'type': 'line', 'points': [(0.3, 1.4), (0.7, 1.25)]}], # Raised Grave
 }
 
 def get_char_strokes(char):
@@ -144,7 +243,7 @@ def sample_ellipse(center, radii, arc, steps=None):
     # Aim for ~2 degrees per step for high smoothness (Ultra Quality)
     if steps is None:
         span_deg = abs(arc[1] - arc[0])
-        steps = max(20, int(span_deg / 2)) # Every 2 degrees -> 180 points for a circle
+        steps = max(40, int(span_deg / 1.0)) # ULTRA SMOOTH: Every 1 degree
     
     points = []
     
