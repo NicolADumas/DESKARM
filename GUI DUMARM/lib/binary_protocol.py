@@ -9,6 +9,7 @@ CMD_TRAJECTORY = 0x01
 CMD_HOMING = 0x02
 CMD_STOP = 0x03
 CMD_POS = 0x04
+CMD_MELODY = 0x05
 
 # Response IDs
 RESP_ACK = 0xAA
@@ -29,33 +30,31 @@ def encode_trajectory_point(q0: float, q1: float, dq0: float, dq1: float, ddq0: 
     header = struct.pack('BB', START_BYTE_1, START_BYTE_2)
     packet = header + checksum_data + struct.pack('<I', crc)
     return packet
+    
+def _encode_simple_command(cmd_id: int) -> bytes:
+    payload = struct.pack('<ffffffB', 0, 0, 0, 0, 0, 0, 0)
+    checksum_data = struct.pack('B', cmd_id) + payload
+    crc = calculate_crc32(checksum_data)
+    header = struct.pack('BB', START_BYTE_1, START_BYTE_2)
+    return header + checksum_data + struct.pack('<I', crc)
 
 def encode_stop_command() -> bytes:
-    cmd = CMD_STOP
-    payload = struct.pack('<ffffffB', 0, 0, 0, 0, 0, 0, 0) # Zero payload
-    checksum_data = struct.pack('B', cmd) + payload
-    crc = calculate_crc32(checksum_data)
-    header = struct.pack('BB', START_BYTE_1, START_BYTE_2)
-    packet = header + checksum_data + struct.pack('<I', crc)
-    return packet
+    return _encode_simple_command(CMD_STOP)
 
 def encode_homing_command() -> bytes:
-    cmd = CMD_HOMING
-    payload = struct.pack('<ffffffB', 0, 0, 0, 0, 0, 0, 0) # Zero payload
-    checksum_data = struct.pack('B', cmd) + payload
-    crc = calculate_crc32(checksum_data)
-    header = struct.pack('BB', START_BYTE_1, START_BYTE_2)
-    packet = header + checksum_data + struct.pack('<I', crc)
-    return packet
+    return _encode_simple_command(CMD_HOMING)
 
 def encode_pos_command() -> bytes:
-    cmd = CMD_POS
-    payload = struct.pack('<ffffffB', 0, 0, 0, 0, 0, 0, 0) # Zero payload
+    return _encode_simple_command(CMD_POS)
+
+def encode_melody_command(melody_id: int) -> bytes:
+    cmd = CMD_MELODY
+    # Use melody_id in the last byte of the payload
+    payload = struct.pack('<ffffffB', 0, 0, 0, 0, 0, 0, melody_id)
     checksum_data = struct.pack('B', cmd) + payload
     crc = calculate_crc32(checksum_data)
     header = struct.pack('BB', START_BYTE_1, START_BYTE_2)
-    packet = header + checksum_data + struct.pack('<I', crc)
-    return packet
+    return header + checksum_data + struct.pack('<I', crc)
 
 def decode_feedback(data: bytes) -> dict:
     if len(data) < 8:

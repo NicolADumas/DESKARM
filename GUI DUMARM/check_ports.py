@@ -1,4 +1,3 @@
-
 import serial.tools.list_ports
 import serial
 import time
@@ -47,8 +46,14 @@ def check_ports():
                     if len(buffer) >= 3:
                         if buffer[0] == bp.START_BYTE_1 and buffer[1] == bp.START_BYTE_2:
                             print(f"[SUCCESS] Robot found on {p.device}!")
+                            
+                            # Send Melody Confirmation (ID 1 = USB Success)
+                            confirm_packet = bp.encode_melody_command(1)
+                            s.write(confirm_packet)
+                            
                             found = True
                             break
+
                 time.sleep(0.05)
                 
             if not found:

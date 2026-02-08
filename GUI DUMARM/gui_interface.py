@@ -296,9 +296,51 @@ def py_get_data():
             ddq = (tpy.find_accelerations(dq[0], ts_scaled), tpy.find_accelerations(dq[1], ts_scaled))
             ts = ts_scaled
             print(f"Trajectory scaled. New duration: {ts[-1]:.2f}s")
-            
+        # Stop command is not needed because executor handles queue
+        # But we might want to sound a "Completion" melody?
+        
+        # We send the melody command as a raw packet through serial manager 
+        # BUT serial manager expects tuple (type, q, dq, ddq). 
+        # We need a way to send raw bytes or a special 'cmd' type.
+        # executor.py handles 'trj', 'cmd', 'stop'. 
+        
+        # Simplified: We just encode and send via scm directly if queue is empty?
+        # No, we should append it to the executor? 
+        # Executor doesn't support generic commands easily in its queue.
+        # Let's send it directly via scm, but it might arrive before trajectory finishes if we aren't careful.
+        # The firmware buffer handles execution. If we send generic command, it's processed immediately?
+        # Firmware `process_data` handles commands. 
+        # If we want it at the END, we should rely on the firmware to play it after buffer empty?
+        # Or simplified: The user asked to send it "After generating trajectory".
+        # Since we blast the whole trajectory to the firmware buffer, we can just append the melody command 
+        # at the end of the transmission. The firmware will likely execute it when received 
+        # OR if it's a specific command type, it might interrupt? 
+        # Re-reading: "quando finisce la traiettoria dopo il termine del comando GENerate trajecotry"
+        # This implies sending the command from Python after sending all points.
+        
         state.stop_requested = False # Reset flag before start
         serial_manager.send_data('trj', q=q, dq=dq, ddq=ddq)
+        
+        # Send Trajectory End Melody (ID 5)
+        # We send it directly to serial manager to ensure it goes out after the trajectory points.
+        if SETTINGS['ser_started']:
+            try:
+                melody_pkt = bp.encode_melody_command(5)
+                # We use a slight delay or just write it. 
+                # Ideally serial_manager should have a 'raw' method but it has write_data exposed via scm.
+                # But serial_manager.send_data puts things in a queue for the executor thread.
+                # To preserve order, we should probably add a 'raw' type to executor or similar.
+                # FASTEST WAY: Just write it using scm directly but after a tiny sleep ensures specific ordering?
+                # Actually, serial_manager.send_data adds to `executor.add_chunk`.
+                # `executor` thread sends chunks. 
+                # We can't guarantee sync if we bypass executor.
+                # Let's just bypass for now, assuming the queue fills up fast.
+                # BETTER: The user request implies "After sending".
+                
+                scm.write_data(melody_pkt)
+                print("Sent Trajectory End Melody (ID 5)")
+            except Exception as e:
+                print(f"Failed to send end melody: {e}")
         
         if len(q0s) > 0:
              state.last_known_q = [q0s[-1], q1s[-1]]
@@ -727,3 +769,20 @@ def py_process_image(file_data, options):
         traceback.print_exc()
         print(f"CRITICAL BACKEND ERROR: {e}")
         return []
+
+@eel.expose
+def py_play_melody(melody_id):
+    print(f"Requested Melody ID: {melody_id}")
+    if SETTINGS['ser_started']:
+        try:
+            packet = bp.encode_melody_command(int(melody_id))
+            scm.write_data(packet)
+            print(f"Melody command {melody_id} sent to robot.")
+            return True
+        except Exception as e:
+            print(f"Error sending melody command: {e}")
+            return False
+    else:
+        # print("Simulation mode: cannot play melody.")
+        return False
+

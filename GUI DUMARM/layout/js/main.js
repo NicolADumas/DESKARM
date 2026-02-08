@@ -566,7 +566,17 @@ function setAppMode(mode) {
     ui.sectionText.style.display = (mode === 'text') ? 'block' : 'none';
     if (ui.sectionImage) ui.sectionImage.style.display = (mode === 'image') ? 'block' : 'none';
 
+    // Melody Triggers (Safe Mode: Vibration only)
+    // Drawing=2, Text=3, Image=4
+    let melodyId = 0;
+    if (mode === 'drawing') melodyId = 2;
+    else if (mode === 'text') melodyId = 3;
+    else if (mode === 'image') melodyId = 4;
 
+    if (melodyId > 0) {
+        // Fire and forget
+        eel.py_play_melody(melodyId)().catch(e => console.error("Melody Trigger Failed:", e));
+    }
 
     if (mode === 'drawing') {
         // Force redraw to clear ghost
@@ -575,6 +585,7 @@ function setAppMode(mode) {
         generatePreview();
     }
 }
+
 
 // Mode listener attachment moved to setupEventListeners()
 
