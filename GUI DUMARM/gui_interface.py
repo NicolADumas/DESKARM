@@ -2,9 +2,16 @@ import eel
 import numpy as np
 import traceback
 from time import sleep
+import platform
+try:
+    import winsound
+except ImportError:
+    winsound = None
 
 from lib import trajpy as tpy
-from config import SETTINGS, SIZES, MAX_SPEED_RAD, MAX_ACC_TOLERANCE_FACTOR, SERIAL_PORT, DEBUG_MODE
+from config import SETTINGS, SIZES, MAX_ACC_TOLERANCE_FACTOR, SERIAL_PORT, DEBUG_MODE
+
+
 from state import state
 from serial_manager import serial_manager
 from lib import serial_com as scm
@@ -60,12 +67,12 @@ def validate_trajectory(q, dq, ddq):
         max_v = max(max_v, v0, v1)
         max_a = max(max_a, a0, a1)
     
-    print(f"Stats: Max Vel={max_v:.2f} rad/s (limit: {MAX_SPEED_RAD}), Max Acc={max_a:.2f} rad/s^2 (limit: {MAX_ACC_RAD:.2f})")
+    print(f"Stats: Max Vel={max_v:.2f} rad/s (limit: {SETTINGS['max_speed']}), Max Acc={max_a:.2f} rad/s^2 (limit: {MAX_ACC_RAD:.2f})")
     
     # Calculate required scale factor
     # For velocity: v' = v / scale -> need scale >= v / v_max
     # For acceleration: a' = a / scale^2 -> need scale >= sqrt(a / a_max)
-    scale_v = max_v / MAX_SPEED_RAD if max_v > MAX_SPEED_RAD else 1.0
+    scale_v = max_v / SETTINGS['max_speed'] if max_v > SETTINGS['max_speed'] else 1.0
     scale_a = (max_a / MAX_ACC_RAD) ** 0.5 if max_a > MAX_ACC_RAD else 1.0
     
     scale_factor = max(scale_v, scale_a)
@@ -171,7 +178,28 @@ def merge_to_polylines(data):
             optimized.append(patch)
             
     flush_buffer()
+    flush_buffer()
     return optimized
+
+def play_pc_melody(melody_id):
+    """Simulates the robot melody on PC speakers"""
+    print(f"[DEBUG] play_pc_melody called with ID: {melody_id}")
+    if winsound:
+        try:
+            print(f"[DEBUG] Playing sound with winsound...")
+            # Simple simulation of melodies
+            if melody_id == 5: # Trajectory End (Ta-Da!)
+                winsound.Beep(523, 100) # C5
+                winsound.Beep(659, 100) # E5
+                winsound.Beep(784, 100) # G5
+                winsound.Beep(1046, 300) # C6
+            elif melody_id == 1: # Startup
+                winsound.Beep(440, 100)
+                winsound.Beep(880, 100)
+        except Exception as e:
+            print(f"[ERROR] Sound Error: {e}")
+    else:
+         print(f"[WARNING] winsound module not available.")
 
 # --- EEL EXPOSED FUNCTIONS ---
 
@@ -236,8 +264,8 @@ def py_get_data():
                 patch, 
                 Tc=SETTINGS['Tc'],
                 max_acc=SETTINGS['max_acc'],
-                line=SETTINGS['line_tl'],
-                circle=SETTINGS['circle_tl'],
+                max_speed=SETTINGS['max_speed'],
+                profile=SETTINGS['motion_profile'],
                 sizes=SIZES,
                 initial_q=initial_q
             )
@@ -322,25 +350,17 @@ def py_get_data():
         serial_manager.send_data('trj', q=q, dq=dq, ddq=ddq)
         
         # Send Trajectory End Melody (ID 5)
-        # We send it directly to serial manager to ensure it goes out after the trajectory points.
+        # 1. Physical Robot
         if SETTINGS['ser_started']:
             try:
                 melody_pkt = bp.encode_melody_command(5)
-                # We use a slight delay or just write it. 
-                # Ideally serial_manager should have a 'raw' method but it has write_data exposed via scm.
-                # But serial_manager.send_data puts things in a queue for the executor thread.
-                # To preserve order, we should probably add a 'raw' type to executor or similar.
-                # FASTEST WAY: Just write it using scm directly but after a tiny sleep ensures specific ordering?
-                # Actually, serial_manager.send_data adds to `executor.add_chunk`.
-                # `executor` thread sends chunks. 
-                # We can't guarantee sync if we bypass executor.
-                # Let's just bypass for now, assuming the queue fills up fast.
-                # BETTER: The user request implies "After sending".
-                
                 scm.write_data(melody_pkt)
                 print("Sent Trajectory End Melody (ID 5)")
             except Exception as e:
                 print(f"Failed to send end melody: {e}")
+        
+        # 2. PC Simulation (User Feedback)
+        play_pc_melody(5)
         
         if len(q0s) > 0:
              state.last_known_q = [q0s[-1], q1s[-1]]
@@ -459,6 +479,8 @@ def py_serial_startup():
     print(f"Calling scm.ser_init({SERIAL_PORT})...")
     SETTINGS['ser_started'] = scm.ser_init(SERIAL_PORT)
     print(f"Serial Started? {SETTINGS['ser_started']}")
+    if SETTINGS['ser_started']:
+        play_pc_melody(1) # Connection Sound
 
 @eel.expose
 def py_get_position():
@@ -485,6 +507,38 @@ def py_clear_state():
         
     return True
 
+
+@eel.expose
+def py_set_motion_params(max_acc, max_speed):
+    print(f"Requesting Motion Params: Acc={max_acc}, Speed={max_speed}")
+    try:
+        acc = float(max_acc)
+        speed = float(max_speed)
+        
+        if acc > 0:
+            SETTINGS['max_acc'] = acc
+        if speed > 0:
+            SETTINGS['max_speed'] = speed
+            
+        print(f"Motion Params Updated: Acc={SETTINGS['max_acc']}, Speed={SETTINGS['max_speed']}")
+        return True
+    except ValueError:
+        print("Invalid motion parameters")
+        return False
+
+@eel.expose
+def py_set_motion_profile(profile_name):
+    print(f"Requesting Motion Profile: {profile_name}")
+    # Valid profiles: 'trapezoidal', 's-curve', 'cubic', 'quartic', 'quintic'
+    valid_profiles = ['trapezoidal', 's-curve', 'cubic', 'quartic', 'quintic']
+    
+    if profile_name in valid_profiles:
+        SETTINGS['motion_profile'] = profile_name
+        print(f"Motion Profile switched to: {profile_name}")
+        return True
+    
+    print(f"Invalid profile name: {profile_name}")
+    return False
 
 def _apply_linear_transform(patches, x_offset, y_offset, angle_deg):
     angle_rad = math.radians(angle_deg)
@@ -784,9 +838,70 @@ def py_process_image(file_data, options):
         print(f"CRITICAL BACKEND ERROR: {e}")
         return []
 
+import winsound
+import threading
+
+# Note Frequencies (A=432Hz)
+NOTE_D4   = 288
+NOTE_F4   = 343
+NOTE_Fsp4 = 363 # F#4
+NOTE_Gs4  = 408 # G#4
+NOTE_A4   = 432
+NOTE_B4   = 485
+NOTE_C5   = 514
+NOTE_Cs5  = 544 # C#5
+NOTE_D5   = 576
+NOTE_E5   = 647
+NOTE_Fsp5 = 726 # F#5
+NOTE_G5   = 770
+NOTE_Gs5  = 816 # G#5
+NOTE_A5   = 864
+NOTE_B5   = 970
+NOTE_C6   = 1027
+NOTE_D6   = 1153
+
+def play_pc_sound(melody_id):
+    """Plays the melody on the PC speakers using winsound (Blocking, so run in thread)."""
+    try:
+        if melody_id == 1: # USB: D F# A F5 (Correction)
+            winsound.Beep(NOTE_D4, 100)
+            winsound.Beep(NOTE_Fsp4, 100)
+            winsound.Beep(NOTE_A4, 100)
+            winsound.Beep(NOTE_F5, 200)
+        elif melody_id == 2: # Drawing: A C# E G#
+            winsound.Beep(NOTE_A4, 100)
+            winsound.Beep(NOTE_Cs5, 100)
+            winsound.Beep(NOTE_E5, 100)
+            winsound.Beep(NOTE_Gs5, 200)
+        elif melody_id == 3: # Text: G# B D F#
+            winsound.Beep(NOTE_Gs4, 100)
+            winsound.Beep(NOTE_B4, 100)
+            winsound.Beep(NOTE_D5, 100)
+            winsound.Beep(NOTE_Fsp5, 200)
+        elif melody_id == 4: # Image: E G# B D
+            winsound.Beep(NOTE_E5, 100)
+            winsound.Beep(NOTE_Gs5, 100)
+            winsound.Beep(NOTE_B5, 100)
+            winsound.Beep(NOTE_D6, 200)
+        elif melody_id == 5: # Trajectory End: C# E G# B
+            winsound.Beep(NOTE_Cs5, 100)
+            winsound.Beep(NOTE_E5, 100)
+            winsound.Beep(NOTE_Gs5, 100)
+            winsound.Beep(NOTE_B5, 200)
+        elif melody_id == 6: # Motion Change
+            winsound.Beep(NOTE_C6, 50)
+        elif melody_id == 7: # Ghost Toggle
+            winsound.Beep(NOTE_A4, 50)
+    except Exception as e:
+        print(f"Error playing PC sound: {e}")
+
 @eel.expose
 def py_play_melody(melody_id):
     print(f"Requested Melody ID: {melody_id}")
+    
+    # ALWAYS play sound on PC for simulation/feedback
+    threading.Thread(target=play_pc_sound, args=(int(melody_id),), daemon=True).start()
+
     if SETTINGS['ser_started']:
         try:
             packet = bp.encode_melody_command(int(melody_id))
@@ -797,6 +912,6 @@ def py_play_melody(melody_id):
             print(f"Error sending melody command: {e}")
             return False
     else:
-        # print("Simulation mode: cannot play melody.")
+        # print("Simulation mode: cannot play melody (on robot).")
         return False
 

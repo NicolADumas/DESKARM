@@ -305,3 +305,92 @@ canvas {
         opacity: 0.6;
     }
 }
+
+/* Motion Debug Panel */
+.debug-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 350px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid #444;
+    border-radius: 8px;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.debug-panel.left-panel {
+    right: auto;
+    left: 20px;
+    bottom: 20px;
+}
+
+#help-center-panel {
+    width: 300px;
+}
+
+#help-center-panel.collapsed {
+    width: auto;
+    padding-right: 5px;
+    /* Tweak for emoji look */
+}
+
+.debug-panel .panel-header {
+    padding: 10px 14px;
+    background: #2a2a2a;
+    border-bottom: 1px solid #444;
+    font-size: 0.85em;
+    font-weight: 700;
+    color: #ffd700;
+    /* Gold accent */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    letter-spacing: 0.5px;
+}
+
+.debug-panel .panel-header:hover {
+    background: #333;
+}
+
+.debug-panel .panel-content {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    opacity: 1;
+    transition: opacity 0.2s 0.1s;
+}
+
+/* Collapsed State */
+.debug-panel.collapsed .panel-content {
+    display: none;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.debug-panel.collapsed {
+    width: auto;
+    border-color: #555;
+    background: rgba(30, 30, 30, 0.8);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.debug-panel.collapsed .panel-header {
+    border-bottom: none;
+    padding: 8px 12px;
+}
+
+.debug-panel .toggle-icon {
+    font-size: 0.7em;
+    transition: transform 0.3s;
+    margin-left: 10px;
+}
+
+.debug-panel.collapsed .toggle-icon {
+    transform: rotate(-90deg);
+}

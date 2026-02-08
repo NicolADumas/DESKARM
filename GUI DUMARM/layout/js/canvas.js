@@ -389,7 +389,7 @@ export class CanvasHandler {
         // Common Border Style
         ctx.lineWidth = 2.5; // REQUESTED: 2.5px
 
-        if (mode === 'linear') {
+        if (this.state.showWorkspace && mode === 'linear') {
             // Linear Workspace (Green Rectangle)
             // Draw Full Reachable (Faint)
             const reachColor = getComputedStyle(document.documentElement).getPropertyValue('--reach-circle-color').trim() || '#333';
@@ -420,7 +420,7 @@ export class CanvasHandler {
             ctx.fillRect(rx, ry, w_pix, h_pix);
             ctx.strokeRect(rx, ry, w_pix, h_pix);
 
-        } else {
+        } else if (this.state.showWorkspace) {
             // Curved Workspace (Green Donut Sector)
             ctx.beginPath();
             // Inner/outer radius from state (dynamic)
@@ -929,9 +929,10 @@ export class CanvasHandler {
         for (let p of this.state.points) this.drawPoint(p);
 
         // Draw Manipulator
-        if (this.state.manipulator) {
-            this.state.manipulator.draw_pose(ctx);
-            this.state.manipulator.draw_traces(ctx);
+        if (this.state.manipulator && this.state.showManipulator) {
+            this.state.manipulator.draw_pose(ctx); // Draw Arm (Orange Links)
+            // Visual Traces (Disabled by User Request: "Non mi piace vedere le linee")
+            // this.state.manipulator.draw_traces(ctx);
         }
 
         // Text Preview (Persistent Layer)

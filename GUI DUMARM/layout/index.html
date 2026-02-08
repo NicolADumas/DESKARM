@@ -319,6 +319,8 @@
                     </div>
                 </div>
 
+
+
                 <!-- Workspace Geometry Section (Moved Here) -->
                 <div class="control-group">
                     <div class="group-title">Workspace Geometry</div>
@@ -374,6 +376,62 @@
 
 
     </div>
+    <!-- Motion Debug Panel (Floating) -->
+    <div id="motion-debug-panel" class="debug-panel">
+        <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span>DEBUGGING MOTION CONTROL (WORK IN PROGRESS)</span>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="panel-content">
+            <div class="input-row" style="flex-direction: column; align-items: flex-start;">
+                <label style="margin-bottom: 2px; color: #888; font-size: 0.8em;">Profile</label>
+                <select id="motion-profile-select" class="input-full"
+                    style="padding: 5px; background: #222; color: #fff; border: 1px solid #444;">
+                    <option value="trapezoidal" selected>Trapezoidal (Bang-Bang)</option>
+                    <option value="s-curve">S-Curve (Cycloidal)</option>
+                    <option value="polynomial_cubic">Polynomial (Cubic)</option>
+                    <option value="polynomial_quartic">Polynomial (Quartic)</option>
+                    <option value="polynomial_quintic">Polynomial (Quintic) 🌟</option>
+                </select>
+            </div>
+            <div class="input-row" style="margin-top: 5px; gap: 5px;">
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                    <label style="color: #888; font-size: 0.8em;">Acc</label>
+                    <input type="number" id="motion-acc-input" value="0.1" step="0.05" min="0.01" max="5.0"
+                        style="width: 100%; background: #222; color: #fff; border: 1px solid #444; padding: 3px;">
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column;">
+                    <label style="color: #888; font-size: 0.8em;">Speed</label>
+                    <input type="number" id="motion-speed-input" value="10.0" step="0.5" min="0.1" max="20.0"
+                        style="width: 100%; background: #222; color: #fff; border: 1px solid #444; padding: 3px;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Center Panel (Floating Left) -->
+    <div id="help-center-panel" class="debug-panel left-panel collapsed"
+        style="left: 35%; transform: translateX(-50%); right: auto;">
+        <div class="panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span style="font-size: 1.2em;">ℹ️</span>
+            <span class="toggle-icon">▼</span>
+        </div>
+        <div class="panel-content" style="font-size: 0.85em; color: #ddd; line-height: 1.4;">
+            <p><strong>✏️ Disegno</strong>: Crea forme o linee custom. <br><em>Continuous</em> = Penna giù.
+                <em>Discrete</em> = Penna su tra le forme.
+            </p>
+            <p><strong>✍️ Testo</strong>: Scrivi e genera il percorso. <br>Usa <em>Linear</em> per rette,
+                <em>Curved</em> per archi.
+            </p>
+            <p><strong>🖼️ Immagine</strong>: Carica JPG/PNG. Regola <em>Threshold</em> e <em>Smoothing</em> per pulire
+                il tracciato.</p>
+            <p><strong>⚙️ Motion</strong>: Usa il pannello a destra per cambiare profilo di velocità (es.
+                <em>S-Curve</em> per fluidità).
+            </p>
+            <p><strong>👻 Ghost Robot</strong>: Anteprima verde = Movimento sicuro. Rosso = Fuori portata.</p>
+        </div>
+    </div>
+
 </body>
 
 </html>

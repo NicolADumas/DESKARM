@@ -128,6 +128,11 @@ function initUI() {
         inputImgThreshold: document.getElementById('img-threshold'),
         btnProcessImage: document.getElementById('btn-process-image'),
         btnConfirmImage: document.getElementById('btn-confirm-image'),
+
+        // Motion Control
+        selectMotionProfile: document.getElementById('motion-profile-select'),
+        inputMotionAcc: document.getElementById('motion-acc-input'),
+        inputMotionSpeed: document.getElementById('motion-speed-input'),
     };
 }
 
@@ -511,7 +516,34 @@ function setupEventListeners() {
         }
     });
 
+    // Motion Profile Selector
+    if (ui.selectMotionProfile) {
+        ui.selectMotionProfile.addEventListener('change', (e) => {
+            const profile = e.target.value;
+            console.log(`Switching Motion Profile to: ${profile}`);
+            // Call Python Backend
+            window.eel.py_set_motion_profile(profile)((res) => {
+                if (res) console.log("Backend confirmed profile switch.");
+                else console.error("Backend failed to switch profile.");
+            });
+        });
+    }
 
+    // Motion Parameters (Acc/Speed)
+    [ui.inputMotionAcc, ui.inputMotionSpeed].forEach(el => {
+        if (el) {
+            el.addEventListener('change', () => {
+                const acc = ui.inputMotionAcc.value;
+                const speed = ui.inputMotionSpeed.value;
+                console.log(`Setting Motion Params: Acc=${acc}, Speed=${speed}`);
+
+                window.eel.py_set_motion_params(acc, speed)((res) => {
+                    if (res) console.log("Backend confirmed params update.");
+                    else console.error("Backend failed to update params.");
+                });
+            });
+        }
+    });
 
 }
 

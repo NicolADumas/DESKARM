@@ -304,6 +304,81 @@ def compose_cycloidal(q:list[float], ddqm:float = 1.05) -> list[tuple[list[funct
         A.append(qk)
     return A
 
+""" #@
+@name: polynomial3
+@brief: computes a cubic polynomial trajectory 
+@notes: q(t) = 3(t/tf)^2 - 2(t/tf)^3 (normalized s(t) scaled by distance)
+@inputs: 
+- list[float] q: initial and final values;
+- float ddqm: maximum acceleration (used to compute tf);
+- float tf: duration;
+@outputs: 
+- tuple[list[function], float] : function-handle/duration tuple. 
+@# """
+def polynomial3(q:list[float], ddqm:float = 1.05, tf:float=None) -> tuple[list[function], float]:
+    dq_dist = q[1]-q[0]
+    if tf is None:
+        # For cubic, max acc is at t=0 and t=tf: a_max = 6*dist/tf^2 -> tf = sqrt(6*dist/a_max)
+        tf = sqrt(6*abs(dq_dist)/ddqm)
+    
+    # s(t) = 3t^2 - 2t^3 (normalized time t -> t/tf)
+    # q(t) = q0 + dist * s(t)
+    qt = lambda t: q[0] + dq_dist * (3*(t/tf)**2 - 2*(t/tf)**3)
+    dqt = lambda t: dq_dist * (6*t/tf**2 - 6*t**2/tf**3)
+    ddqt = lambda t: dq_dist * (6/tf**2 - 12*t/tf**3)
+    return ([qt, dqt, ddqt], tf)
+
+
+""" #@
+@name: polynomial4
+@brief: computes a quartic polynomial trajectory 
+@notes: q(t) = 4(t/tf)^3 - 3(t/tf)^4 (s(0)=0, s(1)=1, v(0)=0, v(1)=0, a(0)=0)
+@inputs: 
+- list[float] q: initial and final values;
+- float ddqm: maximum acceleration;
+- float tf: duration;
+@outputs: 
+- tuple[list[function], float] : function-handle/duration tuple. 
+@# """
+def polynomial4(q:list[float], ddqm:float = 1.05, tf:float=None) -> tuple[list[function], float]:
+    dq_dist = q[1]-q[0]
+    if tf is None:
+        # Max acc is at t=tf: a(1) = 12 (normalized) -> a_max = 12*dist/tf^2 -> tf = sqrt(12*dist/a_max)
+        tf = sqrt(12*abs(dq_dist)/ddqm)
+        
+    # s(t) = 4t^3 - 3t^4 (normalized)
+    qt = lambda t: q[0] + dq_dist * (4*(t/tf)**3 - 3*(t/tf)**4)
+    dqt = lambda t: dq_dist * (12*t**2/tf**3 - 12*t**3/tf**4)
+    ddqt = lambda t: dq_dist * (24*t/tf**3 - 36*t**2/tf**4)
+    return ([qt, dqt, ddqt], tf)
+
+
+""" #@
+@name: polynomial5
+@brief: computes a quintic polynomial trajectory 
+@notes: q(t) = 10(t/tf)^3 - 15(t/tf)^4 + 6(t/tf)^5
+@inputs: 
+- list[float] q: initial and final values;
+- float ddqm: maximum acceleration;
+- float tf: duration;
+@outputs: 
+- tuple[list[function], float] : function-handle/duration tuple. 
+@# """
+def polynomial5(q:list[float], ddqm:float = 1.05, tf:float=None) -> tuple[list[function], float]:
+    dq_dist = q[1]-q[0]
+    if tf is None:
+        # Max acc is at t=tf/2 approx? 
+        # a(t) = 60t - 180t^2 + 120t^3 (normalized)
+        # Max normalized acc is approx 5.77 at t=0.21 and t=0.79. Let's use 6 for safety.
+        # Actually max acc for quintic is sqrt(5.77 * dist / a_max).
+        tf = sqrt(5.8*abs(dq_dist)/ddqm)
+
+    # s(t) = 10t^3 - 15t^4 + 6t^5
+    qt = lambda t: q[0] + dq_dist * (10*(t/tf)**3 - 15*(t/tf)**4 + 6*(t/tf)**5)
+    dqt = lambda t: dq_dist * (30*t**2/tf**3 - 60*t**3/tf**4 + 30*t**4/tf**5)
+    ddqt = lambda t: dq_dist * (60*t/tf**3 - 180*t**2/tf**4 + 120*t**3/tf**5)
+    return ([qt, dqt, ddqt], tf)
+
 
 """ #@
 @name: ik
@@ -543,8 +618,155 @@ class Point:
     def __str__(self) -> str:
         return f'<{self.x}, {self.y}>'
 
-    """
-#@
+""" #@
+@name: get_profile_law
+@brief: Returns the timing law function s(t) and duration tf based on profile type and constraints.
+@inputs:
+- str profile: 'trapezoidal', 's-curve', 'cubic', 'quartic', 'quintic'
+- float distance: total distance to travel (magnitude)
+- float max_acc: maximum allowed acceleration constraint
+- float max_vel: maximum allowed velocity constraint
+@outputs:
+- tuple[callable, float]: (s_func, tf) where s_func(t) returns normalized position [0,1]
+@# """
+def get_profile_law(profile: str, distance: float, max_acc: float, max_vel: float) -> tuple[Callable[[float], float], float]:
+    dist = abs(distance)
+    if dist < 1e-9:
+        return (lambda t: 1.0, 0.0)
+
+    # 1. Calculate Duration (tf) based on constraints
+    tf = 0.0
+    
+    if profile == 'trapezoidal':
+        # Bang-Coast-Bang Logic
+        # Time to reach V_max with A_max: t_acc = V_max / A_max
+        # Distance covered during accel+decel: S_acc = V_max * t_acc (Triangle area * 2? No. 0.5*V*t * 2 = V*t)
+        # S_acc = V_max^2 / A_max.
+        
+        t_acc = max_vel / max_acc
+        s_acc_total = (max_vel ** 2) / max_acc 
+        
+        if s_acc_total >= dist:
+            # Triangle Profile (Target Vel not reached)
+            # dist = V_peak * t_acc_peak = (A * t_peak) * t_peak = A * t_peak^2
+            # t_peak = sqrt(dist / max_acc)
+            # tf = 2 * t_peak = 2 * sqrt(dist / max_acc) = sqrt(4 * dist / max_acc)
+            tf = sqrt(4 * dist / max_acc)
+        else:
+            # Trapezoidal Profile (Coast phase)
+            # S_coast = dist - s_acc_total
+            # t_coast = S_coast / max_vel
+            # tf = 2 * t_acc + t_coast
+            t_coast = (dist - s_acc_total) / max_vel
+            tf = 2 * t_acc + t_coast
+            
+    elif profile == 's-curve' or profile == 'cycloidal':
+        # Cycloidal: a(t) = (2*pi*S/tf^2) * sin(2*pi*t/tf) -> A_peak = 2*pi*S/tf^2
+        # V_peak = 2*S/tf
+        tf_acc = sqrt(2 * pi * dist / max_acc)
+        tf_vel = 2 * dist / max_vel
+        tf = max(tf_acc, tf_vel)
+        
+    elif profile == 'cubic':
+        # s(t) = 3t^2 - 2t^3
+        # V_peak = 1.5 * S/tf
+        # A_peak = 6 * S/tf^2
+        tf_acc = sqrt(6 * dist / max_acc)
+        tf_vel = 1.5 * dist / max_vel
+        tf = max(tf_acc, tf_vel)
+        
+    elif profile == 'quartic':
+        # V_peak = 1.778 * S/tf
+        # A_peak = 12 * S/tf^2 (Initial/Final jerk impulse not considered, just geometric max)
+        tf_acc = sqrt(12 * dist / max_acc)
+        tf_vel = 1.778 * dist / max_vel
+        tf = max(tf_acc, tf_vel)
+        
+    elif profile == 'quintic':
+        # V_peak = 1.875 * S/tf
+        # A_peak = 5.7735 * S/tf^2
+        tf_acc = sqrt(5.7735 * dist / max_acc)
+        tf_vel = 1.875 * dist / max_vel
+        tf = max(tf_acc, tf_vel)
+        
+    else: # Default Linear/Trap fallback
+        tf = max(sqrt(4*dist/max_acc), dist/max_vel)
+
+
+    # 2. Return Timing Law Function s(t) [0->1]
+    
+    if profile == 'trapezoidal':
+        # Re-derive parameters for the specific instance
+        v_peak_triangle = sqrt(max_acc * dist)
+        
+        # Determine actual tc (time of acceleration)
+        tc = 0.0
+        actual_acc = max_acc # We use max acc
+        
+        if v_peak_triangle <= max_vel:
+            # Triangle
+            tc = tf / 2
+            # Recalculate Acc to fit exactly? 
+            # tf = sqrt(4S/A) -> A = 4S/tf^2. 
+            # If we used max_acc to find tf, actual_acc is max_acc.
+            actual_acc = 4 * dist / (tf**2)
+        else:
+            # Trapezoid
+            # tf = 2 * (V/A) + (S - V^2/A)/V = V/A + S/V
+            # We used max_vel and max_acc.
+            # tc = max_vel / max_acc
+            tc = max_vel / max_acc
+            actual_acc = max_acc
+
+        # Constants for capture
+        _tc = tc
+        _tf = tf
+        _acc = actual_acc
+        _dist = dist
+        
+        # s(t) must return normalized [0, 1]. 
+        # So we calculate Position(t) and divide by Distance.
+        
+        def s_trap(t):
+             t = max(0.0, min(t, _tf)) # Clamp
+             val = 0.0
+             if t <= _tc:
+                 val = 0.5 * _acc * t**2
+             elif t <= _tf - _tc:
+                 val = 0.5 * _acc * _tc**2 + _acc * _tc * (t - _tc)
+             else:
+                 t_dec = t - (_tf - _tc)
+                 # Position at start of decel
+                 dist_coast = _acc * _tc * (_tf - 2*_tc)
+                 dist_acc = 0.5 * _acc * _tc**2
+                 start_dec_pos = dist_acc + dist_coast
+                 # Decel profile: v(t') = V - a*t', pos = V*t' - 0.5*a*t'^2
+                 v_const = _acc * _tc
+                 val = start_dec_pos + v_const * t_dec - 0.5 * _acc * t_dec**2
+             
+             return val / _dist if _dist > 0 else 1.0
+             
+        return (s_trap, tf)
+
+    # Normalized Polynomials s(tau) where tau = t/tf
+    elif profile == 's-curve' or profile == 'cycloidal':
+        # s(t) = t/tf - sin(2pi*t/tf)/(2pi)
+        return (lambda t: (t/tf - sin(2*pi*t/tf)/(2*pi)) if tf > 0 else 1.0, tf)
+
+    elif profile == 'cubic':
+        # 3tau^2 - 2tau^3
+        return (lambda t: ((t/tf)**2 * (3 - 2*(t/tf))) if tf > 0 else 1.0, tf)
+
+    elif profile == 'quartic':
+        # 4tau^3 - 3tau^4
+        return (lambda t: ((t/tf)**3 * (4 - 3*(t/tf))) if tf > 0 else 1.0, tf)
+
+    elif profile == 'quintic':
+        # 10tau^3 - 15tau^4 + 6tau^5
+        return (lambda t: ((t/tf)**3 * (10 - 15*(t/tf) + 6*(t/tf)**2)) if tf > 0 else 1.0, tf)
+    
+    return (lambda t: t/tf if tf > 0 else 1.0, tf)
+""" #@
 @name: slice_trj
 @brief: slices the trajectory patch 
 @notes: depending on the type of notes (line or circle) this function slices the trajectory patch in segments depending on 
@@ -560,8 +782,8 @@ a timing law s(t) specified by the user
 ```
 - **kargs:
     * 'max_acc': maximum acceleration;
-    * 'line': timing law s(t) for a linear trajectory patch;
-    * 'circle': timing law s(t) for a circular trajectory patch;
+    * 'max_speed': maximum velocity;
+    * 'profile': motion profile name ('trapezoidal', 's-curve', etc.);
     * 'sizes': sizes dict containing the sizes of the two links of the manipulator ({'l1': l1, 'l2':l2});
     * 'Tc': time step used for the timing law;
 @outputs: 
@@ -578,8 +800,8 @@ def slice_trj(patch: dict, **kargs):
     if 'max_speed' not in kargs:
         kargs['max_speed'] = 5.0 # Default max speed if not specified
         
-    if 'line' not in kargs or 'circle' not in kargs:
-        raise Exception("No line or circle timing law was specified")
+    profile_name = kargs.get('profile', 'trapezoidal')
+    
     if 'Tc' not in kargs:
         kargs['Tc'] = 1e-3
     if 'sizes' not in kargs:
@@ -605,11 +827,14 @@ def slice_trj(patch: dict, **kargs):
     angle = 0
     radius=abs((sp-c).mag()) if patch['type'] == 'circle' else None  #radius of the circle
     if patch['type'] == 'circle':
-        v1 = (sp-c) 
-        v2 = (ep-c) 
-        # find the angle of rotation between start and end point
-        d_alpha = (2*pi+v2.angle())%(2*pi) - (2*pi+v1.angle())%(2*pi) # between 0 and 2pi
-        angle = d_alpha if abs(d_alpha) < pi else (-(2*pi-d_alpha) if d_alpha > 0 else 2*pi+d_alpha) # angle between the two vectors starting from the center of the circumference
+        if 'angle' in patch['data']:
+            angle = patch['data']['angle']
+        else:
+            v1 = (sp-c) 
+            v2 = (ep-c) 
+            # find the angle of rotation between start and end point
+            d_alpha = (2*pi+v2.angle())%(2*pi) - (2*pi+v1.angle())%(2*pi) # between 0 and 2pi
+            angle = d_alpha if abs(d_alpha) < pi else (-(2*pi-d_alpha) if d_alpha > 0 else 2*pi+d_alpha) # angle between the two vectors starting from the center of the circumference
 
     if patch['type'] == 'polyline':
         # Polyline Logic: Interpolate across multiple points based on total length
@@ -621,25 +846,18 @@ def slice_trj(patch: dict, **kargs):
             Ls.append(d)
             total_len += d
         
-        # Calculate duration based on total length
-        # Constraints: 
-        # 1. Acceleration: tf >= sqrt(2*k*S / A) -> for cycloidal k=pi -> sqrt(2*pi*S / A)
-        # 2. Velocity: tf >= k*S / V -> for cycloidal k=2 -> 2*S / V
+        # Get timing law and duration
+        s_func, tf = get_profile_law(profile_name, total_len, kargs['max_acc'], kargs['max_speed'])
         
-        tf_acc = sqrt(2*pi*total_len / kargs['max_acc'])
-        tf_vel = (2 * total_len) / kargs['max_speed']
-        tf = max(tf_acc, tf_vel)
-        
-        print(f"[DEBUG] Polyline Slicing: Pts={len(pts)}, Len={total_len:.4f}, Acc={kargs['max_acc']}, Vmax={kargs['max_speed']} -> Tf={tf:.4f} (Ta={tf_acc:.4f}, Tv={tf_vel:.4f})")
+        print(f"[DEBUG] Polyline Slicing: Pts={len(pts)}, Len={total_len:.4f}, Profile={profile_name} -> Tf={tf:.4f}")
     else:
-        # length = l if patch['type'] == 'line' else patch['data']['radius']*abs(angle) # LENGTH OF THE PATH
-        # NOTE: changed for testing purposes -> change when real accelerations values are found
+        # Primitive Logic
         length = l if patch['type'] == 'line' else abs(angle)*radius # LENGTH OF THE PATH
         
-        tf_acc = sqrt(2*pi*length/kargs['max_acc'])
-        tf_vel = (2 * length) / kargs['max_speed']
-        tf = max(tf_acc, tf_vel)
-        print(f"[DEBUG] Primitive Slicing: Type={patch['type']}, Len={length:.4f}, Acc={kargs['max_acc']}, Vmax={kargs['max_speed']} -> Tf={tf:.4f} (Ta={tf_acc:.4f}, Tv={tf_vel:.4f})")
+        # Get timing law and duration
+        s_func, tf = get_profile_law(profile_name, length, kargs['max_acc'], kargs['max_speed'])
+
+        print(f"[DEBUG] Primitive Slicing: Type={patch['type']}, Len={length:.4f}, Profile={profile_name} -> Tf={tf:.4f}")
 
 
     points = [] # points (in operational space)
@@ -691,17 +909,17 @@ def slice_trj(patch: dict, **kargs):
     # here penup=0 surely
     if patch['type'] == 'line':
         for t in rangef(0, kargs['Tc'], tf, True):
-            s = kargs['line'](t, tf) # s \in [0, 1], t \in [0, tf]
+            s = s_func(t) # s \in [0, 1]
             points.append(sp + ((ep-sp)*s))
             ts.append(t)
     elif patch['type'] == 'circle':
         for t in rangef(0, kargs['Tc'], tf, True):
-            s = kargs['circle'](t, tf)
+            s = s_func(t)
             points.append(c+(sp-c).rotate(s*angle))
             ts.append(t)
     elif patch['type'] == 'polyline':
         for t in rangef(0, kargs['Tc'], tf, True):
-            s_norm = kargs['line'](t, tf) # Normalized s [0, 1]
+            s_norm = s_func(t) # Normalized s [0, 1]
             s = s_norm * total_len # Actual distance along polyline
             
             # Find which segment 's' falls into

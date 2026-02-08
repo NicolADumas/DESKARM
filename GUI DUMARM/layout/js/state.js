@@ -72,6 +72,8 @@ class StateManager {
         this.snapToGrid = false;
         this.gridSize = 20; // pixels
         this.showGrid = false;
+        this.showManipulator = true; // "Virtual Arm" enabled (User Request: "Manca il braccio")
+        this.showWorkspace = true;   // Show Workspace Limits by default
 
         // Tool-specific options
         this.polygonSides = 6;
