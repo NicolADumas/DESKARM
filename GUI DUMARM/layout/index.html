@@ -106,7 +106,25 @@
 
 
 
-                <textarea id="text-input" placeholder="Enter text..." class="input-full" rows="1"></textarea>
+                <div class="input-row" style="margin-bottom: 5px;">
+                    <textarea id="text-input" placeholder="Enter text..." class="input-full" rows="1"></textarea>
+                    <button id="btn-show-symbols" class="btn sm" style="width: 40px; margin-left: 5px;"
+                        title="Insert Symbol">🔣</button>
+                </div>
+
+                <!-- Symbol Picker Modal (Hidden by default) -->
+                <div id="symbol-picker" class="hidden" style="
+                    background: #2a2a2a; 
+                    border: 1px solid #444; 
+                    padding: 5px; 
+                    margin-bottom: 10px; 
+                    border-radius: 4px; 
+                    display: grid; 
+                    grid-template-columns: repeat(6, 1fr); 
+                    gap: 3px;">
+                    <!-- Symbols will be injected here by JS -->
+                </div>
+
 
                 <div class="input-row">
                     <label>Size:</label>
@@ -228,20 +246,25 @@
                     style="font-size: 0.8em; color: #aaa; height: 30px; line-height: 20px; overflow: hidden; background: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px; white-space: nowrap; border-radius: 4px;">
                 </div>
 
-                <div class="input-row" style="margin-bottom: 5px;">
-                    <label style="font-size: 0.8em;">Style:</label>
-                    <div style="display: flex; gap: 8px; flex-grow: 1; justify-content: flex-end;">
-                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                <div class="input-row" style="margin-bottom: 5px; flex-direction: column; align-items: flex-start;">
+                    <label style="font-size: 0.8em; margin-bottom: 2px;">Style:</label>
+                    <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; padding-left: 10px;">
+                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;">
                             <input type="radio" name="img-style" value="auto" checked> Auto
                         </label>
-                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 3px; cursor: pointer;">
-                            <input type="radio" name="img-style" value="outline"> Double
+                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="img-style" value="skeleton"> Complex Image
                         </label>
-                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 3px; cursor: pointer;">
-                            <input type="radio" name="img-style" value="skeleton"> Single
+                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="img-style" value="outline"> Simple Image
                         </label>
+
+
                     </div>
                 </div>
+
+
+
 
                 <button id="btn-process-image" class="btn primary" style="width: 100%; margin-bottom: 5px;">
 

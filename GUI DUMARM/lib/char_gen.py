@@ -222,7 +222,122 @@ FONT_DEFS = {
           {'type': 'ellipse', 'center': (0.5, 0.3), 'radii': (0.5, 0.3), 'arc': (180, 360)}, 
           {'type': 'line', 'points': [(1, 0.3), (1, 1)]},
           {'type': 'line', 'points': [(0.3, 1.4), (0.7, 1.25)]}], # Raised Grave
+          
+    # Extra Symbols
+    '^': [{'type': 'line', 'points': [(0.2, 0.6), (0.5, 1)]},
+          {'type': 'line', 'points': [(0.5, 1), (0.8, 0.6)]}],
+          
+    '°': [{'type': 'ellipse', 'center': (0.2, 0.9), 'radii': (0.15, 0.15), 'arc': (0, 360)}],
+    
+    '€': [{'type': 'ellipse', 'center': (0.55, 0.5), 'radii': (0.4, 0.5), 'arc': (30, 330)}, # C-shape (shifted right)
+          {'type': 'line', 'points': [(0.0, 0.6), (0.7, 0.6)]}, # Top Line (Crosses left)
+          {'type': 'line', 'points': [(0.0, 0.4), (0.7, 0.4)]}], # Bottom Line (Crosses left)
+
+
+    
+    '£': [{'type': 'ellipse', 'center': (0.5, 0.75), 'radii': (0.35, 0.25), 'arc': (30, 210)}, # Top hook
+          {'type': 'line', 'points': [(0.2, 0.65), (0.2, 0.2)]}, # Vertical down
+          {'type': 'line', 'points': [(0.2, 0.2), (0.8, 0.2)]}, # Horizontal base
+          {'type': 'line', 'points': [(0.1, 0.5), (0.6, 0.5)]}], # Cross bar
+
+    # --- ARROWS ---
+    '←': [{'type': 'line', 'points': [(0.8, 0.5), (0.2, 0.5)]}, 
+          {'type': 'line', 'points': [(0.4, 0.7), (0.2, 0.5), (0.4, 0.3)]}],
+    '↑': [{'type': 'line', 'points': [(0.5, 0.2), (0.5, 0.8)]}, 
+          {'type': 'line', 'points': [(0.3, 0.6), (0.5, 0.8), (0.7, 0.6)]}],
+    '→': [{'type': 'line', 'points': [(0.2, 0.5), (0.8, 0.5)]}, 
+          {'type': 'line', 'points': [(0.6, 0.7), (0.8, 0.5), (0.6, 0.3)]}],
+    '↓': [{'type': 'line', 'points': [(0.5, 0.8), (0.5, 0.2)]}, 
+          {'type': 'line', 'points': [(0.3, 0.4), (0.5, 0.2), (0.7, 0.4)]}],
+    '↔': [{'type': 'line', 'points': [(0.2, 0.5), (0.8, 0.5)]}, 
+          {'type': 'line', 'points': [(0.3, 0.6), (0.1, 0.5), (0.3, 0.4)]},
+          {'type': 'line', 'points': [(0.7, 0.6), (0.9, 0.5), (0.7, 0.4)]}],
+
+    # --- WEATHER ---
+    '☀': [{'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.2, 0.2), 'arc': (0, 360)}, # Sun Body
+          # Rays (8)
+          {'type': 'line', 'points': [(0.5, 0.8), (0.5, 0.95)]}, 
+          {'type': 'line', 'points': [(0.5, 0.2), (0.5, 0.05)]},
+          {'type': 'line', 'points': [(0.8, 0.5), (0.95, 0.5)]},
+          {'type': 'line', 'points': [(0.2, 0.5), (0.05, 0.5)]},
+          {'type': 'line', 'points': [(0.71, 0.71), (0.82, 0.82)]},
+          {'type': 'line', 'points': [(0.29, 0.29), (0.18, 0.18)]},
+          {'type': 'line', 'points': [(0.29, 0.71), (0.18, 0.82)]},
+          {'type': 'line', 'points': [(0.71, 0.29), (0.82, 0.18)]}],
+          
+    '☁': [{'type': 'line', 'points': [(0.2, 0.3), (0.8, 0.3)]}, # Bottom Flat
+          {'type': 'ellipse', 'center': (0.2, 0.45), 'radii': (0.15, 0.15), 'arc': (90, 270)}, # Left arc
+          {'type': 'ellipse', 'center': (0.4, 0.6), 'radii': (0.2, 0.2), 'arc': (0, 180)}, # Top mid big
+          {'type': 'ellipse', 'center': (0.7, 0.5), 'radii': (0.15, 0.15), 'arc': (-45, 180)}, # Right top
+          {'type': 'ellipse', 'center': (0.8, 0.45), 'radii': (0.15, 0.15), 'arc': (-90, 45)}], # Right bottom
+          
+    '⚡': [{'type': 'line', 'points': [(0.6, 1.0), (0.3, 0.5), (0.5, 0.5), (0.4, 0.0)]}], # Bolt
+
+    # --- SUITS ---
+    '♠': [{'type': 'ellipse', 'center': (0.35, 0.4), 'radii': (0.15, 0.15), 'arc': (0, 180)}, # Left lobe
+          {'type': 'ellipse', 'center': (0.65, 0.4), 'radii': (0.15, 0.15), 'arc': (0, 180)}, # Right lobe
+          {'type': 'line', 'points': [(0.2, 0.4), (0.5, 0.9), (0.8, 0.4)]}, # Top Spike
+          {'type': 'line', 'points': [(0.5, 0.4), (0.5, 0.1), (0.3, 0.0), (0.7, 0.0), (0.5, 0.1)]}], # Base
+
+    '♦': [{'type': 'line', 'points': [(0.5, 0.1), (0.2, 0.5), (0.5, 0.9), (0.8, 0.5), (0.5, 0.1)]}, # Outer
+          {'type': 'line', 'points': [(0.5, 0.3), (0.35, 0.5), (0.5, 0.7), (0.65, 0.5), (0.5, 0.3)]}], # Inner (to look filled/different)
+
+    '♣': [{'type': 'ellipse', 'center': (0.5, 0.7), 'radii': (0.15, 0.15), 'arc': (0, 360)}, # Top Leaf
+
+          {'type': 'ellipse', 'center': (0.3, 0.45), 'radii': (0.15, 0.15), 'arc': (0, 360)}, # Left Leaf
+          {'type': 'ellipse', 'center': (0.7, 0.45), 'radii': (0.15, 0.15), 'arc': (0, 360)}, # Right Leaf
+          {'type': 'line', 'points': [(0.5, 0.45), (0.5, 0.1), (0.3, 0.0), (0.7, 0.0), (0.5, 0.1)]}], # Base
+
+    # --- OFFICE / TECH ---
+    '✉': [{'type': 'line', 'points': [(0.1, 0.2), (0.1, 0.8), (0.9, 0.8), (0.9, 0.2), (0.1, 0.2)]}, # Envelope Box
+          {'type': 'line', 'points': [(0.1, 0.8), (0.5, 0.5), (0.9, 0.8)]}], # Flap
+    
+    '⚓': [{'type': 'line', 'points': [(0.5, 0.8), (0.5, 0.2)]}, # Shank
+          {'type': 'line', 'points': [(0.3, 0.7), (0.7, 0.7)]}, # Stock
+          {'type': 'ellipse', 'center': (0.5, 0.9), 'radii': (0.1, 0.1), 'arc': (0, 360)}, # Ring
+          {'type': 'ellipse', 'center': (0.5, 0.4), 'radii': (0.3, 0.3), 'arc': (180, 360)}, # Bowl
+          {'type': 'line', 'points': [(0.2, 0.4), (0.25, 0.5)]}, # Fluke L
+          {'type': 'line', 'points': [(0.8, 0.4), (0.75, 0.5)]}], # Fluke R
+
+
+
+    # --- SHAPES ---
+    '□': [{'type': 'line', 'points': [(0.2, 0.2), (0.2, 0.8), (0.8, 0.8), (0.8, 0.2), (0.2, 0.2)]}], # Square
+    '△': [{'type': 'line', 'points': [(0.2, 0.2), (0.5, 0.8), (0.8, 0.2), (0.2, 0.2)]}], # Triangle
+    '○': [{'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.35, 0.35), 'arc': (0, 360)}], # Circle
+    '◊': [{'type': 'line', 'points': [(0.5, 0.1), (0.2, 0.5), (0.5, 0.9), (0.8, 0.5), (0.5, 0.1)]}], # Diamond
+
+    # --- MATH ---
+    '±': [{'type': 'line', 'points': [(0.2, 0.7), (0.8, 0.7)]}, # Plus H
+          {'type': 'line', 'points': [(0.5, 0.5), (0.5, 0.9)]}, # Plus V
+          {'type': 'line', 'points': [(0.2, 0.3), (0.8, 0.3)]}], # Minus
+    '×': [{'type': 'line', 'points': [(0.3, 0.3), (0.7, 0.7)]}, 
+          {'type': 'line', 'points': [(0.3, 0.7), (0.7, 0.3)]}],
+    '÷': [{'type': 'line', 'points': [(0.2, 0.5), (0.8, 0.5)]}, 
+          {'type': 'ellipse', 'center': (0.5, 0.75), 'radii': (0.05, 0.05), 'arc': (0, 360)},
+          {'type': 'ellipse', 'center': (0.5, 0.25), 'radii': (0.05, 0.05), 'arc': (0, 360)}],
+    '≠': [{'type': 'line', 'points': [(0.2, 0.4), (0.8, 0.4)]},
+          {'type': 'line', 'points': [(0.2, 0.6), (0.8, 0.6)]},
+          {'type': 'line', 'points': [(0.3, 0.2), (0.7, 0.8)]}], # Slash
+    '√': [{'type': 'line', 'points': [(0.1, 0.5), (0.3, 0.2), (0.4, 0.9), (0.9, 0.9)]}],
+
+    # --- MISC ---
+    '♥': [{'type': 'ellipse', 'center': (0.3, 0.7), 'radii': (0.2, 0.2), 'arc': (0, 180)}, # Top Left
+          {'type': 'ellipse', 'center': (0.7, 0.7), 'radii': (0.2, 0.2), 'arc': (0, 180)}, # Top Right
+          {'type': 'line', 'points': [(0.1, 0.7), (0.5, 0.1)]}, # Left Down
+          {'type': 'line', 'points': [(0.9, 0.7), (0.5, 0.1)]}], # Right Down
+    '★': [{'type': 'line', 'points': [(0.5, 0.9), (0.65, 0.4), (0.95, 0.4), (0.7, 0.2), 
+                                     (0.8, -0.3), (0.5, 0.0), (0.2, -0.3), (0.3, 0.2), 
+                                     (0.05, 0.4), (0.35, 0.4), (0.5, 0.9)]}], # Star (Polyline)
+    '☺': [{'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.45, 0.45), 'arc': (0, 360)}, # Face
+          {'type': 'ellipse', 'center': (0.35, 0.65), 'radii': (0.05, 0.05), 'arc': (0, 360)}, # Eye L
+          {'type': 'ellipse', 'center': (0.65, 0.65), 'radii': (0.05, 0.05), 'arc': (0, 360)}, # Eye R
+          {'type': 'ellipse', 'center': (0.5, 0.5), 'radii': (0.25, 0.2), 'arc': (200, 340)}], # Smile
+    '♪': [{'type': 'ellipse', 'center': (0.2, 0.2), 'radii': (0.1, 0.08), 'arc': (0, 360)}, # Note Head
+          {'type': 'line', 'points': [(0.3, 0.2), (0.3, 0.8), (0.5, 0.8)]}], # Stem + Flag
 }
+
+
 
 def get_char_strokes(char):
     return FONT_DEFS.get(char.upper(), [])

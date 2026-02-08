@@ -1591,3 +1591,76 @@ function debounce(func, wait) {
         timeout = setTimeout(() => func.apply(this, args), wait);
     };
 }
+
+// --- Symbol Picker Logic ---
+document.addEventListener('DOMContentLoaded', () => {
+    const btnShowSymbols = document.getElementById('btn-show-symbols');
+    const symbolPicker = document.getElementById('symbol-picker');
+    const textInput = document.getElementById('text-input');
+
+    // List of supported symbols from char_gen.py
+    const supportedSymbols = [
+        // Math / Logic
+        '+', '-', '=', '<', '>', '*', '/', '\\', '|', '%', '^', '±', '×', '÷', '≠', '√',
+        // Punctuation
+        '.', ',', ':', ';', '!', '?', '"', "'", '°',
+        // Brackets
+        '(', ')', '[', ']', '{', '}',
+        // Arrows
+        '←', '↑', '→', '↓', '↔',
+        // Suits & Weather
+        '♠', '♣', '♥', '♦', '☀', '☁', '⚡',
+        // Office & Icons
+        '✉', '⚓', '★', '♪', '☺',
+        // Shapes & Misc
+        '□', '△', '○', '◊', '€', '£', '$', '@', '&', '#', '_'
+    ];
+
+
+
+
+    if (btnShowSymbols && symbolPicker && textInput) {
+        // Populate Picker
+        supportedSymbols.forEach(char => {
+            const btn = document.createElement('button');
+            btn.textContent = char;
+            btn.className = 'btn sm secondary';
+            btn.style.width = '100%';
+            btn.style.fontFamily = 'monospace';
+            btn.style.padding = '5px 0';
+            btn.style.fontSize = '1.2em';
+
+            btn.onclick = () => {
+                // Insert char at cursor position
+                const start = textInput.selectionStart;
+                const end = textInput.selectionEnd;
+                const text = textInput.value;
+                const before = text.substring(0, start);
+                const after = text.substring(end, text.length);
+
+                textInput.value = before + char + after;
+                textInput.selectionStart = textInput.selectionEnd = start + 1;
+                textInput.focus();
+
+                // Trigger input event for real-time preview
+                textInput.dispatchEvent(new Event('input', { bubbles: true }));
+            };
+
+            symbolPicker.appendChild(btn);
+        });
+
+        // Toggle Visibility
+        btnShowSymbols.onclick = () => {
+            if (symbolPicker.classList.contains('hidden')) {
+                symbolPicker.classList.remove('hidden');
+                symbolPicker.style.display = 'grid'; // Ensure grid layout
+                btnShowSymbols.classList.add('active'); // Optional styling
+            } else {
+                symbolPicker.classList.add('hidden');
+                symbolPicker.style.display = 'none';
+                btnShowSymbols.classList.remove('active');
+            }
+        };
+    }
+});
+
