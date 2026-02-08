@@ -158,16 +158,44 @@
                 </div>
 
                 <div class="input-row">
-                    <label>Width (m):</label> <input type="number" id="img-width" value="0.10" step="0.01">
+                    <label style="min-width: 80px;">Width (m):</label>
+                    <div class="stepper-control"
+                        style="display: flex; align-items: center; gap: 5px; flex-grow: 1; justify-content: flex-end;">
+                        <button class="btn sm" data-action="dec" data-target="img-width" data-step="0.005">🔻</button>
+                        <input type="number" id="img-width" value="0.10" step="0.005"
+                            style="width: 60px; text-align: center;">
+                        <button class="btn sm" data-action="inc" data-target="img-width" data-step="0.005">🔺</button>
+                    </div>
                 </div>
                 <div class="input-row">
-                    <label>Offset X:</label> <input type="number" id="img-x" value="0.20" step="0.01">
+                    <label style="min-width: 80px;">Offset X:</label>
+                    <div class="stepper-control"
+                        style="display: flex; align-items: center; gap: 5px; flex-grow: 1; justify-content: flex-end;">
+                        <button class="btn sm" data-action="dec" data-target="img-x" data-step="0.005">🔻</button>
+                        <input type="number" id="img-x" value="0.20" step="0.005"
+                            style="width: 60px; text-align: center;">
+                        <button class="btn sm" data-action="inc" data-target="img-x" data-step="0.005">🔺</button>
+                    </div>
                 </div>
                 <div class="input-row">
-                    <label>Offset Y:</label> <input type="number" id="img-y" value="0.00" step="0.01">
+                    <label style="min-width: 80px;">Offset Y:</label>
+                    <div class="stepper-control"
+                        style="display: flex; align-items: center; gap: 5px; flex-grow: 1; justify-content: flex-end;">
+                        <button class="btn sm" data-action="dec" data-target="img-y" data-step="0.005">🔻</button>
+                        <input type="number" id="img-y" value="0.00" step="0.005"
+                            style="width: 60px; text-align: center;">
+                        <button class="btn sm" data-action="inc" data-target="img-y" data-step="0.005">🔺</button>
+                    </div>
                 </div>
                 <div class="input-row">
-                    <label>Rotation:</label> <input type="number" id="img-rotation" value="0" step="5">
+                    <label style="min-width: 80px;">Rotation:</label>
+                    <div class="stepper-control"
+                        style="display: flex; align-items: center; gap: 5px; flex-grow: 1; justify-content: flex-end;">
+                        <button class="btn sm" data-action="dec" data-target="img-rotation" data-step="5">🔻</button>
+                        <input type="number" id="img-rotation" value="0" step="5"
+                            style="width: 60px; text-align: center;">
+                        <button class="btn sm" data-action="inc" data-target="img-rotation" data-step="5">🔺</button>
+                    </div>
                 </div>
                 <div class="input-row">
                     <label>Threshold:</label>
@@ -197,10 +225,26 @@
                 </div>
 
                 <div id="image-debug-log" class="hidden"
-                    style="font-size: 0.7em; color: #aaa; max-height: 60px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 5px; margin-bottom: 5px;">
+                    style="font-size: 0.8em; color: #aaa; height: 30px; line-height: 20px; overflow: hidden; background: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px; white-space: nowrap; border-radius: 4px;">
+                </div>
+
+                <div class="input-row" style="margin-bottom: 5px;">
+                    <label style="font-size: 0.8em;">Style:</label>
+                    <div style="display: flex; gap: 8px; flex-grow: 1; justify-content: flex-end;">
+                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                            <input type="radio" name="img-style" value="auto" checked> Auto
+                        </label>
+                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                            <input type="radio" name="img-style" value="outline"> Double
+                        </label>
+                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 3px; cursor: pointer;">
+                            <input type="radio" name="img-style" value="skeleton"> Single
+                        </label>
+                    </div>
                 </div>
 
                 <button id="btn-process-image" class="btn primary" style="width: 100%; margin-bottom: 5px;">
+
                     ⚙ PROCESS
                 </button>
                 <button id="btn-confirm-image" class="btn"
@@ -261,18 +305,24 @@
                     </div>
 
                     <!-- Linear Workspace Controls -->
-                    <div id="linear-ws-controls" style="margin-top: 10px;">
-                        <div class="input-row">
-                            <label>Sheet X:</label><input type="number" id="ws-x" value="0.05" step="0.01">
+                    <!-- Linear Workspace Controls -->
+                    <div id="linear-ws-controls"
+                        style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div class="input-row" style="flex-direction: column; align-items: flex-start;">
+                            <label style="margin-bottom: 2px;">Sheet X:</label><input type="number" id="ws-x"
+                                value="0.05" step="0.01" style="width: 100%;">
                         </div>
-                        <div class="input-row">
-                            <label>Sheet Y:</label><input type="number" id="ws-y" value="-0.15" step="0.01">
+                        <div class="input-row" style="flex-direction: column; align-items: flex-start;">
+                            <label style="margin-bottom: 2px;">Sheet Y:</label><input type="number" id="ws-y"
+                                value="-0.15" step="0.01" style="width: 100%;">
                         </div>
-                        <div class="input-row">
-                            <label>Length:</label><input type="number" id="ws-w" value="0.20" step="0.01">
+                        <div class="input-row" style="flex-direction: column; align-items: flex-start;">
+                            <label style="margin-bottom: 2px;">Larghezza:</label><input type="number" id="ws-w"
+                                value="0.20" step="0.01" style="width: 100%;">
                         </div>
-                        <div class="input-row">
-                            <label>Height:</label><input type="number" id="ws-h" value="0.30" step="0.01">
+                        <div class="input-row" style="flex-direction: column; align-items: flex-start;">
+                            <label style="margin-bottom: 2px;">Altezza:</label><input type="number" id="ws-h"
+                                value="0.30" step="0.01" style="width: 100%;">
                         </div>
                     </div>
 

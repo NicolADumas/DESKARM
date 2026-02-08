@@ -42,20 +42,23 @@ def process_image(file_data_base64, options):
         
         import time
         t_start = time.time()
-        print(f"[DEBUG] Starting Image Processing. Mode: {mode}")
+        
+        # Use provided logger or default to print
+        log = options.get('logger', print)
+        log(f"[DEBUG] Starting Image Processing. Mode: {mode}")
         
         if mode == 'svg':
             raw_paths = _process_svg(decoded_data)
         elif mode == 'vector_bw' or True: # Default to new Vector BW engine for now
-            raw_paths = _process_vector_bw(decoded_data, options)
+            raw_paths = _process_vector_bw(decoded_data, options, log)
         else:
             raw_paths = _process_raster(decoded_data, options)
             
         t_proc = time.time()
-        print(f"[DEBUG] Processing complete in {t_proc - t_start:.4f}s. Found {len(raw_paths)} paths.")
+        log(f"[DEBUG] Processing complete in {t_proc - t_start:.4f}s. Found {len(raw_paths)} raw paths.")
             
         if not raw_paths:
-            print("[DEBUG] No paths found.")
+            log("[DEBUG] No paths found.")
             return []
             
         # --- Normalization & Scaling ---
@@ -237,7 +240,57 @@ def _process_svg(svg_data):
         print(f"SVG Error: {e}")
         return []
 
-def _process_vector_bw(image_data, options):
+def analyze_complexity(binary, log=print):
+    """
+    Analyze binary image complexity to choose between Outline or Skeleton.
+    """
+    h, w = binary.shape
+    total_pixels = h * w
+    edge_pixels = cv2.countNonZero(binary)
+    density = edge_pixels / total_pixels
+    
+    # Distance transform to estimate stroke width
+    dist_map = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
+    max_half_width = np.max(dist_map) # This is half-width
+    
+    log(f"Complexity Analysis: Density={density:.2%}, MaxHalfWidth={max_half_width:.2f}px")
+    
+    # Heuristic: 
+    # - If very dense (> 12%) -> Complex sketch -> Skeleton
+    # - If lines are very thin (max half-width < 2.0) -> Skeleton
+    # - Otherwise -> Outline (Double Line)
+    
+    if density > 0.12 or max_half_width < 2.0:
+        return 'skeleton'
+    return 'outline'
+
+def _skeletonize(img):
+    """
+    Efficient thinning algorithm (Zhang-Suen alternative or OpenCV built-in)
+    """
+    # Use OpenCV built-in if available, else manual thinning
+    size = np.size(img)
+    skel = np.zeros(img.shape, np.uint8)
+    
+    element = cv2.getStructuringElement(cv2.MORPH_CROSS, (3,3))
+    done = False
+    
+    temp = img.copy()
+    
+    while(not done):
+        eroded = cv2.erode(temp, element)
+        temp_ = cv2.dilate(eroded, element)
+        temp_ = cv2.subtract(temp, temp_)
+        skel = cv2.bitwise_or(skel, temp_)
+        temp = eroded.copy()
+        
+        zeros = size - cv2.countNonZero(temp)
+        if zeros == size:
+            done = True
+            
+    return skel
+
+def _process_vector_bw(image_data, options, log=print):
     """
     Step 1: Strict Binary Vectorization (B/W Only)
     """
@@ -258,55 +311,80 @@ def _process_vector_bw(image_data, options):
             img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
         # 1. Strict Binary Thresholding
-        # Use user-defined threshold
         thresh_val = int(options.get('threshold', 127))
         inverted = bool(options.get('inverted', False))
         
-        # If Inverted: White lines on Black bg -> We want White to be foreground (255)
-        # If Normal: Black lines on White bg -> We want Black to be foreground (0->255)
-        # THRESH_BINARY_INV: mask = src > thresh ? 0 : 255 (Dark is fg)
-        # THRESH_BINARY: mask = src > thresh ? 255 : 0 (Light is fg)
-        
+        log(f"Thresholding: {thresh_val}, Inverted: {inverted}")
+
         type_ = cv2.THRESH_BINARY if inverted else cv2.THRESH_BINARY_INV
         _, binary = cv2.threshold(img, thresh_val, 255, type_)
 
-        # Morphological Cleanup (Optional, removes single noise pixels)
-        # Controlled by User Toggle
+        # Morphological Cleanup
         if options.get('noise_reduction', False):
+            log("Applying Noise Reduction...")
             kernel = np.ones((2,2), np.uint8)
-            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel) # Remove noise
+            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
 
-        # Step 2: Full Contour Extraction (RETR_TREE)
-        # Use RETR_TREE to capture full hierarchy (including holes)
-        contours, hierarchy = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # 2. Hybrid Mode Logic (Auto-Detect)
+        style = options.get('style', 'auto')
+        if style == 'auto':
+            style = analyze_complexity(binary, log)
+            log(f"Auto-Detected Style: {style.upper()}")
         
+        # 3. Apply algorithm based on style
+        if style == 'skeleton':
+            log("Generating Single-Line Skeleton...")
+            final_binary = _skeletonize(binary)
+            # RETR_EXTERNAL for single line
+            retr_mode = cv2.RETR_EXTERNAL
+            approx_level = 0.001 
+        else:
+            log("Generating Double-Line Outlines...")
+            final_binary = binary
+            # RETR_TREE for double outlines (inner/outer)
+            retr_mode = cv2.RETR_TREE
+            approx_level = 0.002 
+
+        # Step 2: Full Contour Extraction
+        contours, hierarchy = cv2.findContours(final_binary, retr_mode, cv2.CHAIN_APPROX_SIMPLE)
+        log(f"Contours found: {len(contours)}")
+
         paths = []
-        for cnt in contours:
+        for i, cnt in enumerate(contours):
              # Filter noise (dust)
              length = cv2.arcLength(cnt, True)
-             if length < 2: continue # Was 10, reduced to 2 for micro-details
+             # Higher filter for outlines, lower for skeleton to keep detail
+             min_len = 5 if style == 'outline' else 2
+             if length < min_len: continue 
 
              # Step 3: Curve Smoothing
-             # 1. Initial simplify to get main shape (remove pixel steps)
-             epsilon = 0.002 * length 
-             approx = cv2.approxPolyDP(cnt, epsilon, True)
+             epsilon = approx_level * length 
+             # Only close if it's an outline
+             is_closed = (style == 'outline')
+             approx = cv2.approxPolyDP(cnt, epsilon, is_closed)
              pts = [ (float(p[0][0]), float(p[0][1])) for p in approx ]
              
-             # 2. Apply Chaikin Smoothing (Corner Cutting)
-             # User defined smoothing iterations
-             smooth_iter = int(options.get('smoothing', 2))
-             if len(pts) > 2 and smooth_iter > 0:
-                 pts = _chaikin_smooth(pts, iterations=smooth_iter)
-                 pts.append(pts[0]) # Close loop
+             if len(pts) > 2:
+                 smooth_iter = int(options.get('smoothing', 2))
+                 if smooth_iter > 0:
+                     pts = _chaikin_smooth(pts, iterations=smooth_iter)
+                 
+                 if is_closed:
+                    pts.append(pts[0])
+                    
                  paths.append(pts)
+        
+        log(f"Valid paths after filtering: {len(paths)}")
                  
         # Step 4: Sorting (Optimize Travel)
         paths = _sort_paths(paths)
+        log("Paths sorted for travel optimization.")
                  
         return paths
 
+
     except Exception as e:
-        print(f"Vector BW Error: {e}")
+        log(f"Vector BW Error: {e}")
         return []
 
 def _chaikin_smooth(points, iterations=2):

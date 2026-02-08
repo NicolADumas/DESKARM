@@ -761,8 +761,22 @@ def py_delete_template(filename):
 def py_process_image(file_data, options):
     try:
         print(f"Processing Image Request: {options.get('width')}m width, mode={options.get('mode')}")
+        
+        # Define Logger Callback that streams to Frontend
+        def frontend_logger(msg):
+            print(msg) # Keep server log
+            try:
+                eel.js_log_image_processing(str(msg))
+                eel.sleep(0.001) # Yield to allow Websocket flush
+            except Exception as e:
+                print(f"Frontend Log Error: {e}")
+
+        # Inject logger into options
+        options['logger'] = frontend_logger
+        
+        frontend_logger("Starting Backend Processing...")
         result = image_processor.process_image(file_data, options)
-        print(f"Backend Processing Finished. Returning {len(result)} patches.")
+        frontend_logger(f"Backend Processing Finished. Returning {len(result)} patches.")
         return result
     except Exception as e:
         import traceback

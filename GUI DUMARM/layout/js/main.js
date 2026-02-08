@@ -532,9 +532,20 @@ window.addEventListener('load', () => {
             if (state.manipulator) state.manipulator.q = q;
         },
 
-        onDrawTraces: (points) => {
-            if (state.manipulator) {
-                // ...
+        onDrawTraces: (data) => {
+            if (state.manipulator && data && data.length === 2) {
+                // data is [q1_array, q2_array]
+                const q1 = data[0];
+                const q2 = data[1];
+
+                state.manipulator.reset_trace();
+
+                // Iterate and add points
+                // Optimization: Don't draw every single point if too many?
+                // For now, draw all.
+                for (let i = 0; i < q1.length; i++) {
+                    state.manipulator.add2trace([q1[i], q2[i]]);
+                }
             }
         },
 
@@ -1212,7 +1223,33 @@ function setupImageEvents() {
         ui.btnConfirmImage.addEventListener('click', confirmImage);
     }
 
-    // Preview Transforms Update
+    // Stepper Controls Logic
+    document.querySelectorAll('.stepper-control button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const targetId = btn.dataset.target;
+            const step = parseFloat(btn.dataset.step);
+            const action = btn.dataset.action;
+            const input = document.getElementById(targetId);
+
+            if (input) {
+                let currentVal = parseFloat(input.value) || 0;
+                if (action === 'inc') currentVal += step;
+                if (action === 'dec') currentVal -= step;
+
+                // Round to avoid float errors
+                if (targetId.includes('rotation')) {
+                    input.value = currentVal; // integers
+                } else {
+                    input.value = currentVal.toFixed(3);
+                }
+
+                // Trigger event
+                input.dispatchEvent(new Event('input'));
+            }
+        });
+    });
+
+    // Preview Transforms Update (Standard Inputs now)
     [ui.inputImgWidth, ui.inputImgX, ui.inputImgY, ui.inputImgRotation].forEach(el => {
         if (el) el.addEventListener('input', updateImagePreviewTransforms);
     });
@@ -1232,9 +1269,16 @@ function setupImageEvents() {
             debouncedProcess();
         });
     }
+
+    // Image Style Listeners
+    document.querySelectorAll('input[name="img-style"]').forEach(el => {
+        el.addEventListener('change', processImage);
+    });
+
     if (document.getElementById('img-invert')) {
         document.getElementById('img-invert').addEventListener('change', processImage);
     }
+
     if (document.getElementById('img-show-original')) {
         document.getElementById('img-show-original').addEventListener('change', (e) => {
             if (ui.imgPreviewImg) ui.imgPreviewImg.style.opacity = e.target.checked ? '0.3' : '0';
@@ -1314,8 +1358,16 @@ async function processImage() {
             base64Data = await resizeImage(file, 800);
         }
 
+        // Clear Previous Logs
+        const logContainer = document.getElementById('image-debug-log');
+        if (logContainer) {
+            logContainer.innerHTML = '';
+            logContainer.classList.remove('hidden');
+        }
+
         const options = {
             mode: isSvg ? 'svg' : 'vector_bw', // Force Vector Mode
+            style: document.querySelector('input[name="img-style"]:checked')?.value || 'auto',
             width: parseFloat(ui.inputImgWidth.value) || 0.10,
             x: 0,
             y: 0,
@@ -1325,6 +1377,7 @@ async function processImage() {
             inverted: document.getElementById('img-invert')?.checked || false,
             noise_reduction: document.getElementById('img-noise-reduction')?.checked || false
         };
+
 
         // Call Backend
         const patches = await window.eel.py_process_image(base64Data, options)();
@@ -1344,6 +1397,30 @@ async function processImage() {
     } finally {
         if (loadingEl) loadingEl.classList.add('hidden');
     }
+}
+
+// Expose Log Function for Backend
+window.js_log_image_processing = function (msg) {
+    const logContainer = document.getElementById('image-debug-log');
+    if (logContainer) {
+        logContainer.classList.remove('hidden');
+
+        const line = document.createElement('div');
+        line.textContent = `> ${msg}`;
+        line.style.fontSize = '0.9em';
+        line.style.fontFamily = 'monospace';
+        line.style.color = '#00ffcc';
+        line.style.borderBottom = '1px solid #333';
+        line.style.padding = '2px 0';
+
+        logContainer.appendChild(line);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+};
+
+// Expose to Eel
+if (window.eel) {
+    window.eel.expose(window.js_log_image_processing, 'js_log_image_processing');
 }
 
 function updateImagePreviewTransforms() {

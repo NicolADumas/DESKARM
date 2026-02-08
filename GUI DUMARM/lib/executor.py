@@ -145,7 +145,7 @@ class TrajectoryExecutor:
             
             # Notify UI (Animation)
             try:
-                eel.js_draw_pose([state.firmware.q0, state.firmware.q1], state.firmware.penup)
+                eel.js_draw_pose([state.firmware.q0, state.firmware.q1, state.firmware.penup])
             except:
                 pass 
 

@@ -69,7 +69,7 @@ class SerialManager:
             # Update GUI with current position (Always, even if offline)
             if time() - last_gui_update > GUI_UPDATE_INTERVAL:
                 try:
-                    eel.js_draw_pose([state.firmware.q0, state.firmware.q1], state.firmware.penup)
+                    eel.js_draw_pose([state.firmware.q0, state.firmware.q1, state.firmware.penup])
                 except:
                     pass
                 last_gui_update = time()
