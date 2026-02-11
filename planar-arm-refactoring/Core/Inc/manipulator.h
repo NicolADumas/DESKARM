@@ -18,11 +18,8 @@
 #include <math.h>
 #include "utils.h"
 
-#define PEN_UP 0
-#define PEN_DOWN 1
-
-#define SERVO_PWM_DOWN 1000
-#define SERVO_PWM_UP   2000
+#define PEN_UP 1
+#define PEN_DOWN 0
 
 // Note: Macros and Structs moved to manipulator_types.h
 

@@ -10,7 +10,7 @@
 #define CMD_HOMING     0x02
 #define CMD_STOP       0x03
 #define CMD_POS        0x04
-#define CMD_PEN        0x05
+#define CMD_MELODY     0x05
 
 #define RESP_STATUS    0x01
 #define RESP_POS       0x02

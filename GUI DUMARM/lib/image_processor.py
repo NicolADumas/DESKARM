@@ -79,16 +79,69 @@ def process_image(file_data_base64, options):
         print(f"[DEBUG] Original BBox: {orig_w:.2f} x {orig_h:.2f}")
         
         if orig_w == 0: orig_w = 0.001
+        if orig_h == 0: orig_h = 0.001
+
+        # --- Smart Rotation & Scaling ---
+        # Goal: Align the image's Longest Dimension with the Robot's Lateral Axis (Y)
+        # and scale that dimension to match the requested 'width'.
         
-        scale = width_m / orig_w
+        user_rot = float(options.get('rotation', 0.0))
+        target_w = float(options.get('width', 0.10))
+        target_h = float(options.get('height', 0.0)) # Option might be missing or 0
+        
+        # Calculate aspect ratio
+        is_landscape = orig_w >= orig_h
+        
+        rot_offset = 0.0
+        
+        # Default Scales (Uniform)
+        scale_x = 1.0
+        scale_y = 1.0
+        
+        if is_landscape:
+            # Landscape: Image Width -> Robot Lateral (Y)
+            #            Image Height -> Robot Forward (X)
+            rot_offset = -90.0
+            
+            # Scale X (Width) to match Target Width (Lateral)
+            scale_x = target_w / orig_w
+            
+            if target_h > 0:
+                # User provided explicit Height (Forward Span)
+                scale_y = target_h / orig_h
+            else:
+                # Maintain Aspect Ratio
+                scale_y = scale_x 
+                
+            print(f"[DEBUG] Landscape. Rot -90. ScaleX(W->Lat)={scale_x:.4f}, ScaleY(H->Fwd)={scale_y:.4f}")
+            
+        else:
+            # Portrait: Image Height -> Robot Lateral (Y)
+            #           Image Width -> Robot Forward (X)
+            rot_offset = 0.0
+            
+            # Scale Y (Height) to match Target Width (Lateral)
+            scale_y = target_w / orig_h
+            
+            if target_h > 0:
+                 # User provided explicit Height (Forward Span)
+                 scale_x = target_h / orig_w
+            else:
+                 # Maintain Aspect Ratio
+                 scale_x = scale_y
+                 
+            print(f"[DEBUG] Portrait. Rot 0. ScaleY(H->Lat)={scale_y:.4f}, ScaleX(W->Fwd)={scale_x:.4f}")
+
+
+        # Apply offset to user rotation
+        rot_final = user_rot + rot_offset
+        rot_rad = np.radians(rot_final)
         
         # User Transforms
         off_x = float(options.get('x', 0.20))
         off_y = float(options.get('y', 0.0))
-        rot_deg = float(options.get('rotation', 0.0))
-        rot_rad = np.radians(rot_deg)
         
-        # Center of the original shape for rotation
+        # Center of the original shape for rotation (Center of Bounding Box)
         center_x = (min_x + max_x) / 2
         center_y = (min_y + max_y) / 2
         
@@ -101,9 +154,9 @@ def process_image(file_data_base64, options):
             transformed_path = []
             
             for i, (px, py) in enumerate(path):
-                # 1. Zero-center
-                tx = (px - center_x) * scale
-                ty = (py - center_y) * scale 
+                # 1. Zero-center and Scale (Non-Uniform possible)
+                tx = (px - center_x) * scale_x
+                ty = (py - center_y) * scale_y
                 
                 # Image coordinate system: Y down
                 # Robot coordinate system: Y up (usually)

@@ -85,6 +85,17 @@ class SerialManager:
         match msg_type:
             case 'trj':
                 self.executor.execute(data)
+            case 'cmd':
+                if 'cmd_type' in data:
+                    cmd = data['cmd_type']
+                    if cmd == 'stop':
+                        scm.send_data(bp.encode_stop_command())
+                    elif cmd == 'homing':
+                        scm.send_data(bp.encode_homing_command())
+                    elif cmd == 'melody':
+                        scm.send_data(bp.encode_melody_command(data.get('val', 1)))
+                    elif cmd == 'set_tc':
+                        scm.send_data(bp.encode_set_tc_command(data.get('val', 10)))
 
 # Global Instance
 serial_manager = SerialManager()

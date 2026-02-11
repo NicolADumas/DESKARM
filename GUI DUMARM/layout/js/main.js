@@ -69,11 +69,12 @@ function initUI() {
         inputLinY: document.getElementById('lin-y'),
         inputLinAngle: document.getElementById('lin-angle'),
 
-        // Workspace Config (Linear)
         inputWsX: document.getElementById('ws-x'),
         inputWsY: document.getElementById('ws-y'),
         inputWsW: document.getElementById('ws-w'),
         inputWsH: document.getElementById('ws-h'),
+        selectPaperSize: document.getElementById('ws-paper-size'),
+        paperSizeBlock: document.getElementById('paper-size-block'),
 
         // Curved Inputs (Text positioning)
         inputCurvRadius: document.getElementById('curv-radius'),
@@ -122,6 +123,8 @@ function initUI() {
         imgPreviewContainer: document.getElementById('image-preview-container'),
         imgPreviewImg: document.getElementById('image-preview-img'),
         inputImgWidth: document.getElementById('img-width'),
+        inputImgHeight: document.getElementById('img-height'),
+        inputImgLockRatio: document.getElementById('img-lock-ratio'),
         inputImgX: document.getElementById('img-x'),
         inputImgY: document.getElementById('img-y'),
         inputImgRotation: document.getElementById('img-rotation'),
@@ -328,6 +331,8 @@ function setupEventListeners() {
         console.log("State cleaned.");
     });
 
+
+
     // Stop Trajectory
     ui.btnStop.addEventListener('click', async () => {
         console.log("Stopping trajectory...");
@@ -516,6 +521,47 @@ function setupEventListeners() {
         }
     });
 
+    // --- Paper Size Logic ---
+    if (ui.selectPaperSize) {
+        const paperSizes = {
+            'A0': { w: 0.841, h: 1.189 },
+            'A1': { w: 0.594, h: 0.841 },
+            'A2': { w: 0.420, h: 0.594 },
+            'A3': { w: 0.297, h: 0.420 },
+            'A4': { w: 0.210, h: 0.297 },
+            'A5': { w: 0.148, h: 0.210 },
+            'F4': { w: 0.210, h: 0.330 }
+        };
+
+        ui.selectPaperSize.addEventListener('change', (e) => {
+            const size = e.target.value;
+            if (paperSizes[size]) {
+                // Update Dimensions
+                if (ui.inputWsW) ui.inputWsW.value = paperSizes[size].w.toFixed(3);
+                if (ui.inputWsH) ui.inputWsH.value = paperSizes[size].h.toFixed(3);
+
+                // Update Position (Center Y, Offset X)
+                if (ui.inputWsX) ui.inputWsX.value = "0.05"; // Standard offset
+                if (ui.inputWsY) ui.inputWsY.value = (-paperSizes[size].h / 2).toFixed(3); // Center Y
+
+                // Trigger input events to ensure state updates and validation run
+                if (ui.inputWsW) ui.inputWsW.dispatchEvent(new Event('input'));
+                if (ui.inputWsH) ui.inputWsH.dispatchEvent(new Event('input'));
+                if (ui.inputWsX) ui.inputWsX.dispatchEvent(new Event('input'));
+                if (ui.inputWsY) ui.inputWsY.dispatchEvent(new Event('input'));
+            }
+        });
+
+        // Set to custom if manual edit
+        [ui.inputWsW, ui.inputWsH].forEach(el => {
+            if (el) {
+                el.addEventListener('input', () => {
+                    ui.selectPaperSize.value = 'custom';
+                });
+            }
+        });
+    }
+
     // Motion Profile Selector
     if (ui.selectMotionProfile) {
         ui.selectMotionProfile.addEventListener('change', (e) => {
@@ -544,6 +590,18 @@ function setupEventListeners() {
             });
         }
     });
+
+    // Motion Tc (Time Step)
+    if (document.getElementById('motion-tc')) {
+        document.getElementById('motion-tc').addEventListener('change', (e) => {
+            const tc = e.target.value;
+            console.log(`Setting Tc to: ${tc}`);
+            window.eel.py_set_tc(tc)((res) => {
+                if (res) console.log("Backend confirmed Tc update.");
+                else console.error("Backend failed to update Tc.");
+            });
+        });
+    }
 
 }
 
@@ -711,9 +769,11 @@ function setTextMode(mode) {
         if (mode === 'linear') {
             ui.linearWsControls.classList.remove('hidden');
             ui.curvedWsControls.classList.add('hidden');
+            if (ui.paperSizeBlock) ui.paperSizeBlock.classList.remove('hidden');
         } else {
             ui.linearWsControls.classList.add('hidden');
             ui.curvedWsControls.classList.remove('hidden');
+            if (ui.paperSizeBlock) ui.paperSizeBlock.classList.add('hidden');
         }
     }
 
@@ -1302,6 +1362,23 @@ function setupImageEvents() {
         });
     }
 
+    // Width/Height Sync Logic
+    if (ui.inputImgWidth && ui.inputImgHeight && ui.inputImgLockRatio) {
+        ui.inputImgWidth.addEventListener('input', (e) => {
+            const w = parseFloat(e.target.value);
+            if (ui.inputImgLockRatio.checked && state.imageAspectRatio) {
+                ui.inputImgHeight.value = (w / state.imageAspectRatio).toFixed(3);
+            }
+        });
+
+        ui.inputImgHeight.addEventListener('input', (e) => {
+            const h = parseFloat(e.target.value);
+            if (ui.inputImgLockRatio.checked && state.imageAspectRatio) {
+                ui.inputImgWidth.value = (h * state.imageAspectRatio).toFixed(3);
+            }
+        });
+    }
+
     // Image Style Listeners
     document.querySelectorAll('input[name="img-style"]').forEach(el => {
         el.addEventListener('change', processImage);
@@ -1331,7 +1408,18 @@ function setupImageEvents() {
                         // Set Background Image for Canvas Overlay
                         const imgObj = new Image();
                         imgObj.src = e.target.result;
-                        state.backgroundImage = imgObj;
+                        imgObj.onload = () => {
+                            state.backgroundImage = imgObj;
+                            // Calculate Aspect Ratio
+                            if (imgObj.naturalWidth && imgObj.naturalHeight) {
+                                state.imageAspectRatio = imgObj.naturalWidth / imgObj.naturalHeight;
+                                // Auto-set Height based on current Width
+                                if (ui.inputImgWidth && ui.inputImgHeight) {
+                                    const w = parseFloat(ui.inputImgWidth.value) || 0.10;
+                                    ui.inputImgHeight.value = (w / state.imageAspectRatio).toFixed(3);
+                                }
+                            }
+                        };
                     }
                     if (document.getElementById('preview-msg')) {
                         document.getElementById('preview-msg').style.display = 'none';
@@ -1401,6 +1489,7 @@ async function processImage() {
             mode: isSvg ? 'svg' : 'vector_bw', // Force Vector Mode
             style: document.querySelector('input[name="img-style"]:checked')?.value || 'auto',
             width: parseFloat(ui.inputImgWidth.value) || 0.10,
+            height: parseFloat(ui.inputImgHeight.value) || 0.10,
             x: 0,
             y: 0,
             rotation: 0,

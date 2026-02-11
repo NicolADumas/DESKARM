@@ -36,7 +36,7 @@ class StateManager {
                 'h': 0.30
             },
             'curvedWorkspace': {
-                'innerRadius': 0.10,
+                'innerRadius': 0.13,
                 'outerRadius': 0.27
             }
         };

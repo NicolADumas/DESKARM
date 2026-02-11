@@ -360,7 +360,7 @@ def py_get_data():
                 print(f"Failed to send end melody: {e}")
         
         # 2. PC Simulation (User Feedback)
-        play_pc_melody(5)
+        # play_pc_melody(5)
         
         if len(q0s) > 0:
              state.last_known_q = [q0s[-1], q1s[-1]]
@@ -480,7 +480,8 @@ def py_serial_startup():
     SETTINGS['ser_started'] = scm.ser_init(SERIAL_PORT)
     print(f"Serial Started? {SETTINGS['ser_started']}")
     if SETTINGS['ser_started']:
-        play_pc_melody(1) # Connection Sound
+        # play_pc_melody(1) # Connection Sound
+        pass
 
 @eel.expose
 def py_get_position():
@@ -529,8 +530,8 @@ def py_set_motion_params(max_acc, max_speed):
 @eel.expose
 def py_set_motion_profile(profile_name):
     print(f"Requesting Motion Profile: {profile_name}")
-    # Valid profiles: 'trapezoidal', 's-curve', 'cubic', 'quartic', 'quintic'
-    valid_profiles = ['trapezoidal', 's-curve', 'cubic', 'quartic', 'quintic']
+    # Valid profiles: 'trapezoidal', 's-curve', 'quintic'
+    valid_profiles = ['trapezoidal', 's-curve', 'quintic']
     
     if profile_name in valid_profiles:
         SETTINGS['motion_profile'] = profile_name
@@ -539,6 +540,24 @@ def py_set_motion_profile(profile_name):
     
     print(f"Invalid profile name: {profile_name}")
     return False
+
+@eel.expose
+def py_set_tc(val):
+    try:
+        val = float(val)
+        if val < 0.001: val = 0.001
+        if val > 0.1: val = 0.1
+        
+        SETTINGS['Tc'] = val
+        tc_ms = int(val * 1000)
+        print(f"Setting Tc: {val}s ({tc_ms}ms)")
+        
+        # Send to Firmware
+        serial_manager.send_data('cmd', cmd_type='set_tc', val=tc_ms)
+        return True
+    except Exception as e:
+        print(f"Error setting Tc: {e}")
+        return False
 
 def _apply_linear_transform(patches, x_offset, y_offset, angle_deg):
     angle_rad = math.radians(angle_deg)
@@ -828,6 +847,8 @@ def py_process_image(file_data, options):
         # Inject logger into options
         options['logger'] = frontend_logger
         
+        # Rotation is handled smartly in image_processor.py
+        
         frontend_logger("Starting Backend Processing...")
         result = image_processor.process_image(file_data, options)
         frontend_logger(f"Backend Processing Finished. Returning {len(result)} patches.")
@@ -862,6 +883,7 @@ NOTE_D6   = 1153
 
 def play_pc_sound(melody_id):
     """Plays the melody on the PC speakers using winsound (Blocking, so run in thread)."""
+    return # Disable PC Sound globally for debug silence
     try:
         if melody_id == 1: # USB: D F# A F5 (Correction)
             winsound.Beep(NOTE_D4, 100)
@@ -900,7 +922,8 @@ def py_play_melody(melody_id):
     print(f"Requested Melody ID: {melody_id}")
     
     # ALWAYS play sound on PC for simulation/feedback
-    threading.Thread(target=play_pc_sound, args=(int(melody_id),), daemon=True).start()
+    # play_pc_sound commented out as per user request to remove debug sounds
+    # threading.Thread(target=play_pc_sound, args=(int(melody_id),), daemon=True).start()
 
     if SETTINGS['ser_started']:
         try:

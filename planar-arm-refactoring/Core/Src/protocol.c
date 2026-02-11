@@ -97,19 +97,34 @@ void manipulator_uart_process(manipulator_t *manipulator, UART_HandleTypeDef *hu
                      pb_push(manipulator, *pkt);
                  } else if (pkt->cmd == CMD_HOMING) {
                      calibration_start(manipulator);
-                 } else if (pkt->cmd == CMD_POS) {
-                      Feedback_POS_t fb;
-                      fb.header[0] = START_BYTE_1;
-                      fb.header[1] = START_BYTE_2;
-                      fb.type = RESP_POS;
-                      rbgetoffset(&manipulator->q0, 0, &fb.q0_actual);
-                      rbgetoffset(&manipulator->q1, 0, &fb.q1_actual);
-                      uint8_t *fb_ptr = (uint8_t*)&fb;
-                      fb.checksum = crc32(fb_ptr + 2, 9);
-                      HAL_UART_Transmit_DMA(huart, (uint8_t*)&fb, sizeof(Feedback_POS_t));
-                 } else if (pkt->cmd == CMD_PEN) {
-                     control_pen(manipulator, pkt->pen_up);
-                 }
+                  } else if (pkt->cmd == CMD_POS) {
+                       Feedback_POS_t fb;
+                       fb.header[0] = START_BYTE_1;
+                       fb.header[1] = START_BYTE_2;
+                       fb.type = RESP_POS;
+                       rbgetoffset(&manipulator->q0, 0, &fb.q0_actual);
+                       rbgetoffset(&manipulator->q1, 0, &fb.q1_actual);
+                       uint8_t *fb_ptr = (uint8_t*)&fb;
+                       fb.checksum = crc32(fb_ptr + 2, 9);
+                       HAL_UART_Transmit_DMA(huart, (uint8_t*)&fb, sizeof(Feedback_POS_t));
+                  } else if (pkt->cmd == CMD_MELODY) {
+                       // Payload[23] contains melody_id (last byte of payload)
+                       // Structure: Header(2) + Cmd(1) + Payload(25) + CRC(4) = 32
+                       // Packet_t struct: q0, q1... pen_up (uint8_t)
+                       // encode_melody_command uses the last byte of payload for ID.
+                       // In Packet_t, the last byte of payload is 'pen_up'. 
+                       // Check packet.h definition: float q0... float ddq1; uint8_t pen_up;
+                       // Yes, pen_up is the last byte of the payload struct.
+                       uint8_t melody_id = pkt->pen_up;
+                       manipulator_play_melody(manipulator, melody_id);
+                  } else if (pkt->cmd == CMD_SET_TC) {
+                       // Payload[23] contains Tc in ms (last byte of payload, re-using pen_up field)
+                       uint8_t tc_ms = pkt->pen_up;
+                       if (tc_ms > 0) {
+                           extern volatile uint32_t control_loop_period_ms;
+                           control_loop_period_ms = tc_ms;
+                       }
+                  }
                  
                  // Advance tail by PACKET_SIZE
                  uart_rx_tail = (uart_rx_tail + PACKET_SIZE) % UART_RX_BUFFER_SIZE;

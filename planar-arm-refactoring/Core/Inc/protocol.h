@@ -11,6 +11,14 @@
 #include "manipulator_types.h"
 #include "usart.h"
 
+/* Command Definitions */
+#define CMD_TRAJECTORY 0x01
+#define CMD_HOMING 0x02
+#define CMD_STOP 0x03
+#define CMD_POS 0x04
+#define CMD_MELODY 0x05
+#define CMD_SET_TC 0x06
+
 /* UART Circular Buffer Definitions */
 #define UART_RX_BUFFER_SIZE 512
 #define RX_BUFFER_SIZE 64 

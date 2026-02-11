@@ -53,7 +53,11 @@ manipulator_t manipulator;
 encoder_t enc1;
 encoder_t enc2;
 uint32_t tick=0;
+uint32_t switch_count1=0;
+uint32_t switch_count2=0;
 
+// Configurable Control Loop Period (default 10ms)
+volatile uint32_t control_loop_period_ms = 10;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -106,12 +110,11 @@ int main(void)
   // --- SYSTEM INITIALIZATION ---
   encoder_init(&htim3, &enc1);
   encoder_init(&htim4, &enc2);
-  manipulator_init(&manipulator, &enc1, &enc2, &htim2, &htim5, &htim10, &htim11);
+  manipulator_init(&manipulator, &enc1, &enc2, &htim5, &htim2, &htim10, &htim11);
   manipulator_start(&manipulator);
-  control_pen(&manipulator, PEN_UP);
   HAL_TIM_Base_Start_IT(&htim10);
 
-  // calibration_start(&manipulator);
+  calibration_start(&manipulator);
   // Start UART DMA Reception
   HAL_UART_Receive_DMA(&huart2, uart_rx_buffer, UART_RX_BUFFER_SIZE);
   /* USER CODE END 2 */
@@ -135,19 +138,16 @@ int main(void)
     }
 
     // If not homed, perform homing
-    // If not homed, perform homing
-	/* 
-    if(homing_check(&manipulator) == 0){ 
+	if(homing_check(&manipulator) == 0){ 
 		if((HAL_GetTick() - tick) > 10){
 			tick = HAL_GetTick();
 			homing(&manipulator);
 		}
 		continue;
-	} 
-    */
+	}
 
-    // --- CONTROL LOOP (approx 100Hz) ---
-    if((HAL_GetTick() - tick) > 10){
+    // --- CONTROL LOOP (approx 100Hz default, configurable) ---
+    if((HAL_GetTick() - tick) > control_loop_period_ms){
         tick = HAL_GetTick();
 
         // Consume a point from the queue if available
@@ -237,8 +237,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 }
 
 
-HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
     if(GPIO_Pin==LIMIT_SWITCH_1_Pin){
+    	switch_count1+=1;
         if(calibration_check(&manipulator)){
           calibration_encoder(&manipulator, &manipulator.encoder_1, CALIBRATION_1);
           apply_velocity_input(&manipulator, (float[2]){0.0, 0.5});
@@ -249,6 +250,7 @@ HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
     }
 
     if (GPIO_Pin==LIMIT_SWITCH_2_Pin){
+    	switch_count2+=1;
         if(calibration_check(&manipulator)){
           calibration_encoder(&manipulator, &manipulator.encoder_2, CALIBRATION_2);
           calibration_stop(&manipulator);

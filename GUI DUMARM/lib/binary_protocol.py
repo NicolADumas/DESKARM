@@ -10,6 +10,7 @@ CMD_HOMING = 0x02
 CMD_STOP = 0x03
 CMD_POS = 0x04
 CMD_MELODY = 0x05
+CMD_SET_TC = 0x06
 
 # Response IDs
 RESP_ACK = 0xAA
@@ -51,6 +52,17 @@ def encode_melody_command(melody_id: int) -> bytes:
     cmd = CMD_MELODY
     # Use melody_id in the last byte of the payload
     payload = struct.pack('<ffffffB', 0, 0, 0, 0, 0, 0, melody_id)
+    checksum_data = struct.pack('B', cmd) + payload
+    crc = calculate_crc32(checksum_data)
+    header = struct.pack('BB', START_BYTE_1, START_BYTE_2)
+    return header + checksum_data + struct.pack('<I', crc)
+
+def encode_set_tc_command(tc_ms: int) -> bytes:
+    cmd = CMD_SET_TC
+    # Use tc_ms in the last byte of the payload (reuse struct format)
+    if tc_ms < 1: tc_ms = 1
+    if tc_ms > 255: tc_ms = 255
+    payload = struct.pack('<ffffffB', 0, 0, 0, 0, 0, 0, tc_ms)
     checksum_data = struct.pack('B', cmd) + payload
     crc = calculate_crc32(checksum_data)
     header = struct.pack('BB', START_BYTE_1, START_BYTE_2)

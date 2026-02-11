@@ -25,9 +25,9 @@
 /* REDUCTION OF THE MOTOR 2*/
 #define REDUCTION_2 5.0f
 /* MICROSTEPS MOTOR 1*/
-#define MICROSTEPS_1 16
+#define MICROSTEPS_1 32
 /* MICROSTEPS MOTOR 2*/
-#define MICROSTEPS_2 16
+#define MICROSTEPS_2 32
 
 /* CALIBRATION MOTOR 1*/ 
 #define CALIBRATION_1 6549 // CNT value at calibration position
@@ -46,9 +46,7 @@
 #define Q0_MIN_RAD (-1.83259571f) // -105.0f * PI / 180.0f
 #define Q1_MAX_RAD (2.18166156f)  //  125.0f * PI / 180.0f
 
-#define MOTION_BUFFER_SIZE 32 // Ensure this is defined if it was in packet.h or similar, but here we see it used in manipulator.h. Assuming it IS in packet.h or needs to be here. 
-// Checking context, MOTION_BUFFER_SIZE was used in manipulator.h but not defined there, likely in packet.h or ring_buffer.h. 
-// Given I cannot see packet.h, I will assume it's available via packet.h include.
+// MOTION_BUFFER_SIZE is defined in packet.h
 
 typedef enum {
     MOTOR_1,
@@ -96,6 +94,41 @@ typedef struct {
     uint8_t homed;
     
     volatile uint8_t telemetry_ready;
+    float feedforward_scale_1;
+    float feedforward_scale_2;
+    float feedforward_acc_scale_1;
+    float feedforward_acc_scale_2;
+
 } manipulator_t;
+
+/* --- MELODY DEFINITIONS (A=432Hz) --- */
+#define NOTE_D4   288
+#define NOTE_F4   343
+#define NOTE_Fsp4 363 // F#4
+#define NOTE_G4   384
+#define NOTE_Gs4  408 // G#4
+#define NOTE_A4   432
+#define NOTE_B4   485
+#define NOTE_C5   514
+#define NOTE_Cs5  544 // C#5
+#define NOTE_D5   576
+#define NOTE_Ds5  610 // D#5
+#define NOTE_E5   647
+#define NOTE_F5   685
+#define NOTE_Fsp5 726 // F#5
+#define NOTE_G5   770
+#define NOTE_Gs5  816 // G#5
+#define NOTE_A5   864
+#define NOTE_B5   970
+#define NOTE_C6   1027
+#define NOTE_D6   1153
+#define NOTE_E6   1318
+#define NOTE_F6   1396
+#define NOTE_G6   1567
+#define NOTE_A6   1760
+#define NOTE_B6   1975
+#define NOTE_C7   2093
+
+void manipulator_play_melody(manipulator_t *manipulator, uint8_t melody_id);
 
 #endif /* INC_MANIPULATOR_TYPES_H_ */

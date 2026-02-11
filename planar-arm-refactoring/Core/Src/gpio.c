@@ -72,7 +72,7 @@ void MX_GPIO_Init(void)
   /*Configure GPIO pins : LIMIT_SWITCH_1_Pin LIMIT_SWITCH_2_Pin */
   GPIO_InitStruct.Pin = LIMIT_SWITCH_1_Pin|LIMIT_SWITCH_2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : DIR_1_Pin */
