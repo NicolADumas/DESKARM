@@ -29,6 +29,7 @@ function initUI() {
 
         btnModeContinuous: document.getElementById('mode-continuous-btn'),
         btnModeDiscrete: document.getElementById('mode-discrete-btn'),
+        btnErase: document.getElementById('erase-mode-btn'),
 
         btnLine: document.getElementById('tool-line'),
         btnCircle: document.getElementById('tool-circle'),
@@ -136,6 +137,7 @@ function initUI() {
         selectMotionProfile: document.getElementById('motion-profile-select'),
         inputMotionAcc: document.getElementById('motion-acc-input'),
         inputMotionSpeed: document.getElementById('motion-speed-input'),
+        inputMotionTc: document.getElementById('motion-tc'),
     };
 }
 
@@ -143,7 +145,7 @@ function initUI() {
 
 function setupEventListeners() {
     if (!ui.btnConnect) {
-        console.error("UI not initialized!");
+        console.error("GUI not initialized!");
         return;
     }
 
@@ -160,6 +162,11 @@ function setupEventListeners() {
         state.drawingMode = 'continuous';
         ui.btnModeContinuous.classList.add('active');
         ui.btnModeDiscrete.classList.remove('active');
+
+        // Disable erase mode if active
+        state.eraseMode = false;
+        ui.btnErase.classList.remove('active');
+
         setTool(state.tool); // Reset partial states
     });
 
@@ -167,8 +174,23 @@ function setupEventListeners() {
         state.drawingMode = 'discrete';
         ui.btnModeDiscrete.classList.add('active');
         ui.btnModeContinuous.classList.remove('active');
+
+        // Disable erase mode if active
+        state.eraseMode = false;
+        ui.btnErase.classList.remove('active');
+
         setTool(state.tool); // Reset partial states
     });
+
+    // Erase Mode
+    if (ui.btnErase) {
+        ui.btnErase.addEventListener('click', () => {
+            state.eraseMode = !state.eraseMode;
+            ui.btnErase.classList.toggle('active', state.eraseMode);
+
+            // Optional: visual feedback or cursor change
+        });
+    }
 
     // Tools
     ui.btnLine.addEventListener('click', () => {
@@ -276,7 +298,7 @@ function setupEventListeners() {
     });
 
     ui.btnClear.addEventListener('click', () => {
-        if (confirm('Clear workspace? This will clear drawings and text.')) {
+        if (confirm('Are you sure to clear your workspace?')) {
             state.resetWorkspace(); // Clears all and saves state
             // State observer will handle UI updates
         }
@@ -301,7 +323,7 @@ function setupEventListeners() {
     });
 
     ui.btnCleanState.addEventListener('click', () => {
-        console.log("Cleaning all state...");
+        console.log("Cleaning all states..");
         // Reset drawing state
         state.points = [];
         state.sentPoints = [];
@@ -592,8 +614,8 @@ function setupEventListeners() {
     });
 
     // Motion Tc (Time Step)
-    if (document.getElementById('motion-tc')) {
-        document.getElementById('motion-tc').addEventListener('change', (e) => {
+    if (ui.inputMotionTc) {
+        ui.inputMotionTc.addEventListener('change', (e) => {
             const tc = e.target.value;
             console.log(`Setting Tc to: ${tc}`);
             window.eel.py_set_tc(tc)((res) => {
@@ -1362,6 +1384,14 @@ function setupImageEvents() {
         });
     }
 
+    if (document.getElementById('img-optimization')) {
+        document.getElementById('img-optimization').addEventListener('input', (e) => {
+            document.getElementById('val-optimization').textContent = e.target.value;
+        });
+    }
+
+
+
     // Width/Height Sync Logic
     if (ui.inputImgWidth && ui.inputImgHeight && ui.inputImgLockRatio) {
         ui.inputImgWidth.addEventListener('input', (e) => {
@@ -1438,6 +1468,106 @@ function setupImageEvents() {
                 if (window.canvasHandler) window.canvasHandler.animate();
             });
         }
+
+        // Handle Global Reset Button (Context Aware)
+        const btnGlobalReset = document.getElementById('btn-global-reset');
+        if (btnGlobalReset) {
+            btnGlobalReset.addEventListener('click', () => {
+                // Determine active mode by checking button classes
+                let currentMode = 'drawing'; // default
+                const btnText = document.getElementById('app-mode-text');
+                const btnImage = document.getElementById('app-mode-image');
+
+                if (btnText && btnText.classList.contains('active')) currentMode = 'text';
+                if (btnImage && btnImage.classList.contains('active')) currentMode = 'image';
+
+                console.log(`Global Reset triggered for mode: ${currentMode}`);
+
+                if (currentMode === 'image') {
+                    if (confirm("Reset Image Mode Cache? (File & State cleared, Params kept)")) {
+                        // Save State before clearing for Undo
+                        // Note: Image state is not fully history-tracked yet (backgroundImage is ref), 
+                        // but patches are. So undo might restore patches but maybe not the file input usage.
+                        // Implemented for consistency.
+
+                        // Clear Image Source
+                        if (ui.inputImageFile) ui.inputImageFile.value = '';
+
+                        // Clear Preview
+                        if (ui.imgPreviewImg) {
+                            ui.imgPreviewImg.src = '';
+                            ui.imgPreviewImg.style.display = 'none';
+                        }
+
+                        // Clear State
+                        state.backgroundImage = null;
+                        state.rawImagePatches = [];
+                        state.imagePreviewPatches = [];
+                        state.showOriginalImage = false;
+
+                        showImageStatus("");
+                        const logContainer = document.getElementById('image-debug-log');
+                        if (logContainer) logContainer.classList.add('hidden');
+
+                        // Update Canvas
+                        if (window.canvasHandler) window.canvasHandler.animate();
+
+                        // Sound ID 4
+                        if (window.eel) window.eel.py_trigger_sound(4);
+                    }
+                } else if (currentMode === 'text') {
+                    if (confirm("Clear Text Input?")) {
+                        const txtInput = document.getElementById('text-input');
+                        if (txtInput) {
+                            txtInput.value = '';
+                            // Update state and save for Undo
+                            state.text = '';
+                            state.saveState();
+                            // Force preview update
+                            generatePreview();
+                        }
+
+                        // Sound ID 2
+                        if (window.eel) window.eel.py_trigger_sound(2);
+                    }
+                } else {
+                    // Drawing Mode (and others fallback)
+                    if (confirm("Clear Drawing Canvas?")) {
+                        if (window.canvasHandler) {
+                            window.canvasHandler.clear(); // This usually handles saveState internally
+                        }
+
+                        // Sound ID 3
+                        if (window.eel) window.eel.py_trigger_sound(3);
+                    }
+                }
+            });
+        }
+
+        // Auto-Process on Parameter Change
+        const autoProcessInputs = [
+            ui.inputImgWidth,
+            ui.inputImgHeight,
+            ui.inputImgThreshold,
+            document.getElementById('img-smoothing'),
+            document.getElementById('img-invert')
+        ];
+
+        autoProcessInputs.forEach(input => {
+            if (input) {
+                // Use 'change' for committed changes (better for sliders/numbers to avoid too many calls)
+                // For immediate response on slider drag, 'input' is better but requires debounce.
+                // Given the new "kill & restart" logic, 'change' is safer for now.
+                // If user wants live drag, we need a debounce wrapper.
+                input.addEventListener('change', processImage);
+            }
+        });
+
+        // Radio buttons for Style
+        document.querySelectorAll('input[name="img-style"]').forEach(radio => {
+            radio.addEventListener('change', processImage);
+        });
+
         if (document.getElementById('img-noise-reduction')) {
             document.getElementById('img-noise-reduction').addEventListener('change', processImage);
         }
@@ -1447,21 +1577,88 @@ function setupImageEvents() {
 state.rawImagePatches = []; // Patches from backend (normalized)
 state.imagePreviewPatches = []; // Patches transformed for preview
 
+let isImageProcessingRunning = false;
+
 async function processImage() {
+    const btnProcess = ui.btnProcessImage;
+    const loadingEl = document.getElementById('image-loading');
     const fileInput = ui.inputImageFile;
+
+    if (isImageProcessingRunning) {
+        // Visual Feedback for Restart
+        if (loadingEl) {
+            loadingEl.textContent = "🔄 Riavvio...";
+            loadingEl.classList.remove('hidden');
+        }
+        if (btnProcess) {
+            btnProcess.innerHTML = "🔄 RIAVVIO...";
+            btnProcess.style.opacity = "0.7";
+        }
+
+        if (window.js_log_image_processing) {
+            window.js_log_image_processing("Riavvio processo con nuovi parametri...");
+        } else {
+            console.warn("Riavvio processo con nuovi parametri...");
+        }
+
+        // Signal backend to stop
+        if (window.eel) {
+            await window.eel.py_stop_processing()();
+            // Give a tiny moment for backend to catch the flag
+            await new Promise(r => setTimeout(r, 100));
+        }
+    }
+
     if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
-        alert("Please select an image file first.");
+        // Only alert if clicked explicitly on the Process button
+        // (Silence the alert if triggered by parameter changes)
+        // Check if event exists and if target is the button
+        // Note: debounced calls might not have the original event as first arg depending on implementation, 
+        // but direct listeners will.
+        // Assuming 'this' context or explicit 'e' argument.
+
+        // Use a safe check (if e is undefined/null, it wasn't a click)
+        try {
+            // Check if argument 0 is an event and its target is the button
+            const isButton = (arguments[0] instanceof Event) && (arguments[0].currentTarget === ui.btnProcessImage || arguments[0].target === ui.btnProcessImage);
+
+            if (isButton) {
+                alert("Please select an image file first.");
+            }
+        } catch (err) {
+            // Ignore error
+        }
+
         return;
     }
 
-    const file = fileInput.files[0];
-    const isSvg = file.name.toLowerCase().endsWith('.svg');
+    // Lock execution
+    isImageProcessingRunning = true;
 
-    // Show Loading
-    const loadingEl = document.getElementById('image-loading');
-    if (loadingEl) loadingEl.classList.remove('hidden');
+    // Visual Feedback for Start
+    if (loadingEl) {
+        loadingEl.textContent = "⏳ Elaborazione...";
+        loadingEl.classList.remove('hidden');
+    }
+    if (btnProcess) {
+        btnProcess.innerHTML = "⏳ ELABORAZIONE...";
+        btnProcess.disabled = true;
+        btnProcess.style.cursor = "wait";
+    }
 
+    // (Loading shown above)
+
+    // START TRY BLOCK IMMEDIATELY
     try {
+        if (window.js_log_image_processing) {
+            const logContainer = document.getElementById('image-debug-log');
+            if (logContainer) logContainer.innerHTML = '';
+            window.js_log_image_processing(">>> IN ESECUZIONE...");
+        }
+
+        const file = fileInput.files[0];
+        const isSvg = file.name.toLowerCase().endsWith('.svg');
+
         let base64Data = "";
 
         if (isSvg) {
@@ -1503,7 +1700,10 @@ async function processImage() {
         // Call Backend
         const patches = await window.eel.py_process_image(base64Data, options)();
 
-        if (patches) {
+        if (patches === null) {
+            console.warn("Processo interrotto dall'utente.");
+            // Do not alert, do not update state
+        } else if (patches) {
             console.log(`Received ${patches.length} patches from backend.`);
             state.rawImagePatches = patches;
             updateImagePreviewTransforms(); // Update preview with current transforms
@@ -1516,7 +1716,18 @@ async function processImage() {
         console.error("Image Process Error:", e);
         alert("Error processing image: " + e);
     } finally {
+        isImageProcessingRunning = false;
+
+        const loadingEl = document.getElementById('image-loading');
         if (loadingEl) loadingEl.classList.add('hidden');
+
+        const btnProcess = ui.btnProcessImage;
+        if (btnProcess) {
+            btnProcess.innerHTML = "⚙ PROCESS";
+            btnProcess.disabled = false;
+            btnProcess.style.cursor = "pointer";
+            btnProcess.style.opacity = "1";
+        }
     }
 }
 
@@ -1563,7 +1774,8 @@ function updateImagePreviewTransforms() {
     const transformedPatches = [];
 
     state.rawImagePatches.forEach(patch => {
-        if (patch.type !== 'line') return; // Only process lines for now
+        // Accept both line and polyline (contours are often polylines)
+        if (patch.type !== 'line' && patch.type !== 'polyline') return;
 
         const newPoints = patch.points.map(p => {
             const x = p[0];
@@ -1581,7 +1793,7 @@ function updateImagePreviewTransforms() {
         });
 
         transformedPatches.push({
-            type: 'line',
+            type: patch.type, // Preserve original type (line/polyline)
             points: newPoints,
             data: patch.data
         });
@@ -1622,8 +1834,11 @@ function resizeImage(file, maxDim) {
 }
 
 // Override confirmImage to add to trajectory
-function confirmImage() {
+async function confirmImage() {
     console.log("confirmImage called");
+
+    // UI Elements
+    const loadingEl = document.getElementById('image-loading');
 
     if (!state.imagePreviewPatches || state.imagePreviewPatches.length === 0) {
         console.warn("No image patches to confirm.");
@@ -1632,9 +1847,44 @@ function confirmImage() {
     }
 
     // Use the transformed patches
-    const patches = state.imagePreviewPatches;
-    console.log(`Confirming ${patches.length} patches...`);
+    const rawPatches = state.imagePreviewPatches;
+    console.log(`Confirming ${rawPatches.length} patches...`);
 
+    // Get Optimization Level (0-10)
+    let optLevel = 8; // Default
+    const optSlider = document.getElementById('img-optimization');
+    if (optSlider) optLevel = parseInt(optSlider.value);
+
+    // Map Level to Tolerance (0 = Disabled)
+    let tolerance = 0;
+    if (optLevel > 0) {
+        tolerance = (optLevel / 10) * 0.005; // Max 0.005m
+    }
+
+    // Visual Feedback
+    if (loadingEl) {
+        if (tolerance > 0) loadingEl.textContent = `⏳ Ottimizzazione (Liv. ${optLevel})...`;
+        else loadingEl.textContent = "⏳ Importazione Punti...";
+        loadingEl.classList.remove('hidden');
+    }
+
+    let patches = rawPatches;
+    if (window.eel && tolerance > 0) {
+        try {
+            console.log(`Requesting trajectory optimization with tolerance ${tolerance}...`);
+            const optimized = await window.eel.py_optimize_trajectory(rawPatches, tolerance)();
+            if (optimized && optimized.length > 0) {
+                console.log(`Optimization success. Using ${optimized.length} optimized patches.`);
+                patches = optimized;
+            }
+        } catch (e) {
+            console.error("Optimization failed, using raw patches.", e);
+        }
+    } else {
+        console.log("Optimization disabled (Level 0). Using raw patches.");
+    }
+
+    if (loadingEl) loadingEl.classList.add('hidden');
     state.saveState(); // Save before adding
 
     let addedCount = 0;

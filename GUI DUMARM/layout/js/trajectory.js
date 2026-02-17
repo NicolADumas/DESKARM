@@ -3,17 +3,19 @@ export class Trajectory {
         this.data = [];
     }
 
-    add_line(p0, p1, raised) {
+    add_line(p0, p1, raised, groupId = null) {
         this.data.push({
             'type': 'line',
-            'data': [p0, p1, raised] // start, end, raised
+            'data': [p0, p1, raised], // start, end, raised
+            'groupId': groupId
         });
     }
 
-    add_circle(c, r, theta_0, theta_1, raised, a, p) {
+    add_circle(c, r, theta_0, theta_1, raised, a, p, groupId = null) {
         this.data.push({
             'type': 'circle',
-            'data': [c, r, theta_0, theta_1, raised, a, p]
+            'data': [c, r, theta_0, theta_1, raised, a, p],
+            'groupId': groupId
         });
     }
 

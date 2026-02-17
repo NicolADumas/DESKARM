@@ -37,6 +37,10 @@ class RobotState:
     rec_data: Dict[str, List[float]] = field(default_factory=lambda: {'q0': [], 'q1': [], 't': []})
     last_known_q: List[float] = field(default_factory=lambda: [0.0, 0.0])
     
+    # Process Generation for Cancellation
+    process_generation: int = 0
+    STOP_PROCESSING: bool = False
+    
     # Logging data
     log_data: Dict[str, List] = field(default_factory=lambda: {
         'time': [], 'q0': [], 'q1': [], 'dq0': [], 'dq1': [],

@@ -99,7 +99,8 @@ def decode_position_feedback(data: bytes) -> dict:
         calculated_crc = calculate_crc32(data[2:11])
         
         if received_crc != calculated_crc:
-            print("CRC Error on POS Feedback")
+            print(f"CRC Error on POS Feedback. Recv: {received_crc:08X}, Calc: {calculated_crc:08X}")
+            print(f"Raw Data (Hex): {data.hex().upper()}")
             return None
             
         q0, q1 = struct.unpack('<ff', data[3:11])

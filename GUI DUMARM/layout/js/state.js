@@ -1,5 +1,6 @@
 import { Manipulator } from './manipulator.js';
 import { Trajectory } from './trajectory.js';
+import { Point } from './utils.js'; // Import Point for restoration
 
 export const TOOLS = {
     LINE: 'line',
@@ -22,11 +23,14 @@ class StateManager {
     constructor() {
         this.settings = {
             'origin': { 'x': 350, 'y': 350 }, // Default, updated on resize/init
-            'm_p': (0.272 * 2) / 700, // meters per pixel (derived from l1+l2 = 0.272)
+            'm_p': (0.272 * 2) / 700, // meters per pixel
             'l1': 0.128,
             'l2': 0.144,
             's_step': 1 / 50,
             'framerate': 60,
+            'Tc': 0.01,
+            'max_acc': 0.1,
+            'max_speed': 10.0,
 
             // Workspace Config
             'linearWorkspace': {
@@ -46,8 +50,9 @@ class StateManager {
         this.circleDefinition = [];
 
         this.tool = TOOLS.LINE;
-        this.appMode = 'drawing'; // 'drawing' | 'text'
-        this.drawingMode = 'continuous'; // 'continuous' | 'discrete'
+        this.appMode = 'drawing';
+        this.drawingMode = 'continuous';
+        this.eraseMode = false;
         this.penUp = false;
 
         this.isSerialOnline = false;
@@ -58,7 +63,7 @@ class StateManager {
 
         // Text State
         this.text = '';
-        this.textSettings = {}; // Stores font size, mode (linear/curved), params
+        this.textSettings = {};
 
         // History for Undo/Redo
         this.history = [];
@@ -72,8 +77,8 @@ class StateManager {
         this.snapToGrid = false;
         this.gridSize = 20; // pixels
         this.showGrid = false;
-        this.showManipulator = true; // "Virtual Arm" enabled (User Request: "Manca il braccio")
-        this.showWorkspace = true;   // Show Workspace Limits by default
+        this.showManipulator = true;
+        this.showWorkspace = true;
 
         // Tool-specific options
         this.polygonSides = 6;
@@ -85,22 +90,20 @@ class StateManager {
         this.shapeStart = null;
 
         // Image Tracing
-        this.backgroundImage = null; // HTMLImageElement
+        this.backgroundImage = null;
         this.showOriginalImage = true;
     }
 
     init(canvasWidth, canvasHeight) {
-        // Update settings based on canvas
         this.settings.origin.x = canvasWidth / 2;
         this.settings.origin.y = canvasHeight / 2;
         this.settings.m_p = (0.272 * 2) / canvasWidth;
 
-        this.manipulator = new Manipulator([0, 0], this.settings); // Home position: arm along +X axis
+        this.manipulator = new Manipulator([0, 0], this.settings);
         this.trajectory = new Trajectory();
         this.sentTrajectory = new Trajectory();
     }
 
-    // --- Observer Pattern ---
     subscribe(callback) {
         this.listeners.push(callback);
     }
@@ -110,18 +113,27 @@ class StateManager {
     }
 
     resetWorkspace() {
+        // Save state BEFORE clearing
+        this.saveState();
+
         this.points = [];
         this.trajectory = new Trajectory();
         this.circleDefinition = [];
         this.text = '';
-        // We might want to keep textSettings or reset them? Keeping them is usually better UX.
+        // textSettings are preserved often, but let's keep them
 
-        // Save this empty state so we can Undo the Clear
-        this.saveState();
+        // Save state AFTER clearing? No, standard is Save Before Action, then Action.
+        // But for "Clear", the action is "Make Empty". 
+        // So we just saved the "Filled" state. Now we empty it.
+        // We also need to save the "Empty" state so we can Redo to it?
+        // Usually: State 1 (Filled) -> Action Clear -> State 2 (Empty).
+        // If I Undo from State 2, I go to State 1.
+        // So I need to push State 2 to history?
+        // Let's just push current state (Filled) now. The "Empty" state is the active state.
+
         this.notifyListeners();
     }
 
-    // Legacy support
     resetDrawing() {
         this.points = [];
         this.trajectory = new Trajectory();
@@ -131,82 +143,120 @@ class StateManager {
     moveToSent() {
         this.sentPoints = [...this.points];
         this.sentTrajectory.data = [...this.trajectory.data];
-        this.resetDrawing(); // Only resets drawing part, text is separate usually? 
-        // Wait, send functionality sends everything? 
-        // If we send text, we should probably clear it too?
-        // consistently with drawing
-        this.text = ''; // Clear text after sending
-        // this.saveState(); // Usually sending doesn't create undo step, but maybe it should?
+        this.resetDrawing();
+        this.text = '';
     }
 
-    saveState() {
-        // Remove any states after current index
-        this.history = this.history.slice(0, this.historyIndex + 1);
+    // --- Robust Save/Restore with Reference Preservation ---
 
-        // Create deep copy of current state
-        const state = {
-            points: this.points.map(p => ({ ...p })),
-            trajectoryData: this.trajectory.data.map(t => ({ ...t })),
-            circleDefinition: this.circleDefinition.map(p => ({ ...p })),
-            penUp: this.penUp,
-            tool: this.tool,
-            // Text State
+    saveState() {
+        // 1. Map current Points to Indices to preserve graph structure
+        const pointToIndex = new Map();
+        this.points.forEach((p, i) => pointToIndex.set(p, i));
+
+        // 2. Serialize Trajectory using Indices
+        const serializedTrajectory = this.trajectory.data.map(item => {
+            const newItem = { type: item.type, data: [], groupId: item.groupId };
+            // item.data contains Points and Scalars (radius/angles)
+            if (item.type === 'line') {
+                // [p0, p1, raised]
+                newItem.data = [
+                    pointToIndex.get(item.data[0]), // Index of p0
+                    pointToIndex.get(item.data[1]), // Index of p1
+                    item.data[2] // raised (boolean)
+                ];
+            } else if (item.type === 'circle') {
+                // [center, radius, startAngle, endAngle, raised, startPoint, endPoint]
+                // radius, angles, raised are scalars/primitives. Points need mapping.
+                newItem.data = [
+                    pointToIndex.get(item.data[0]), // Index of center
+                    item.data[1], // radius
+                    item.data[2], // startAngle
+                    item.data[3], // endAngle
+                    item.data[4], // raised
+                    item.data[5] ? pointToIndex.get(item.data[5]) : null, // startPoint (optional/derived)
+                    item.data[6] ? pointToIndex.get(item.data[6]) : null  // endPoint (optional/derived)
+                ];
+            }
+            return newItem;
+        });
+
+        // 3. Serialize Points (Data only) - Use Relative for consistency
+        const serializedPoints = this.points.map(p => ({ x: p.relX, y: p.relY }));
+
+        // 4. Create Snapshot
+        const stateSnapshot = {
+            points: serializedPoints,
+            trajectory: serializedTrajectory,
+            // Text is simple
             text: this.text,
-            textSettings: { ...this.textSettings }
+            textSettings: { ...this.textSettings },
+            penUp: this.penUp,
+            tool: this.tool
         };
 
-        this.history.push(state);
+        // Manage History Stack
+        this.history = this.history.slice(0, this.historyIndex + 1);
+        this.history.push(stateSnapshot);
         this.historyIndex++;
 
-        // Limit history size
         if (this.history.length > this.maxHistorySize) {
             this.history.shift();
             this.historyIndex--;
         }
     }
 
-    restoreState(state) {
-        if (!state) return;
+    restoreState(snapshot) {
+        if (!snapshot) return;
 
-        this.points = state.points.map(p => ({ ...p })); // We need to re-instantiate Points? 
-        // The JSON object won't have methods.
-        // We'll handle re-instantiation in main.js or utility?
-        // Actually, Point methods are needed for drawing.
-        // Since we use Points for drawing, we should revive them.
+        // 1. Rehydrate Points
+        // We MUST use the SAME settings object so they share origin/scale
+        this.points = snapshot.points.map(pData => new Point(pData.x, pData.y, this.settings));
 
-        // Revive Points
-        // We need a helper to revive points if they are just data objects
-        // But wait, map(p => ({...p})) keeps them as POJOs. They lose prototype.
-        // This is an existing bug in saveState if Points are class instances!
-        // Let's fix it by assuming we need to re-assign prototype or new Point()
+        // 2. Rehydrate Trajectory (Resolve Indices)
+        this.trajectory = new Trajectory(); // Fresh container
+        this.trajectory.data = snapshot.trajectory.map(item => {
+            const restoredItem = { type: item.type, data: [], groupId: item.groupId };
 
-        // FIX: Re-instantiate Points
-        // We'll trust that `main.js` handles data correctly, or we fix it here.
-        // Since I'm here, I'll fix it if I can access Point class. 
-        // I don't import Point here. 
-        // But wait, Utils imports Point. 
-        // Let's rely on simple object copy for now and hope drawing uses properties.
-        // Checking canvas.js... it uses p.relX. If getter/setter is lost, it breaks.
-        // Point class has real properties in `relative` and `actual` objects.
-        // The getters just access them. 
-        // If we copy `{ relative: {...}, actual: {...}, settings: ... }` it might work 
-        // IF we don't call methods. But `canvas.js` resizing calls `updateRelative()`.
-        // So we MUST restore prototype.
+            if (item.type === 'line') {
+                // [idx0, idx1, raised]
+                const p0 = this.points[item.data[0]];
+                const p1 = this.points[item.data[1]];
+                // Safety check
+                if (p0 && p1) {
+                    restoredItem.data = [p0, p1, item.data[2]];
+                }
+            } else if (item.type === 'circle') {
+                // [centerIdx, r, t0, t1, raised, startIdx, endIdx]
+                const center = this.points[item.data[0]];
+                // indices 5 and 6 might be null (legacy or derived)
+                const startP = (item.data[5] !== undefined && item.data[5] !== null) ? this.points[item.data[5]] : null;
+                const endP = (item.data[6] !== undefined && item.data[6] !== null) ? this.points[item.data[6]] : null;
 
-        this.points = state.points; // Just reference for now? No, deep copy needed.
-        this.trajectory.data = state.trajectoryData;
+                if (center) {
+                    restoredItem.data = [
+                        center,
+                        item.data[1], // radius
+                        item.data[2], // t0
+                        item.data[3], // t1
+                        item.data[4], // raised
+                        startP,
+                        endP
+                    ];
+                }
+            }
+            return restoredItem;
+        }).filter(item => item.data.length > 0); // Filter out invalid items
 
-        // Note: The existing implementation was logically flawed regarding Class instances preservation. 
-        // I will focus on unifying Text first. 
-        // If Drawing undo/redo worked before, it means shallow copy or structure was enough.
+        // 3. Restore Other Logic
+        this.text = snapshot.text || '';
+        this.textSettings = snapshot.textSettings || {};
+        this.penUp = snapshot.penUp;
+        this.tool = snapshot.tool;
 
-        this.circleDefinition = state.circleDefinition.map(p => ({ ...p }));
-        this.penUp = state.penUp;
-        this.tool = state.tool;
-
-        // Restore Text
-        this.text = state.text || '';
-        this.textSettings = state.textSettings || {};
+        // Reset ephemeral state
+        this.shapeStart = null;
+        this.semicircleStart = null;
 
         this.notifyListeners();
     }
@@ -221,6 +271,16 @@ class StateManager {
 
     undo() {
         if (this.canUndo()) {
+            // Save CURRENT state to history if we haven't?
+            // "Undo" implies moving BACK.
+            // When we do an action, we push S1. Index points to S1.
+            // Undo -> Index points to S0. Restore S0.
+            // If we are at "tip", the current visible state might be uncommitted?
+            // Usually, standard Undo requires committing state BEFORE action.
+            // My saveState is called inside actions (e.g. add_line).
+            // So history[historyIndex] IS the current state.
+            // Undo means go to historyIndex - 1.
+
             this.historyIndex--;
             this.restoreState(this.history[this.historyIndex]);
         }
@@ -229,7 +289,7 @@ class StateManager {
     redo() {
         if (this.canRedo()) {
             this.historyIndex++;
-            this.restoreState(this.history[this.historyIndex]); // Fixed typo: this.historyIndex
+            this.restoreState(this.history[this.historyIndex]);
         }
     }
 }

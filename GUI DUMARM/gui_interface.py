@@ -196,10 +196,38 @@ def play_pc_melody(melody_id):
             elif melody_id == 1: # Startup
                 winsound.Beep(440, 100)
                 winsound.Beep(880, 100)
+            elif melody_id == 2: # Text Mode Reset (Typewriter-ish)
+                winsound.Beep(1000, 50)
+                winsound.Beep(800, 50)
+            elif melody_id == 3: # Drawing Mode Reset (Eraser-ish)
+                winsound.Beep(600, 50)
+                winsound.Beep(400, 100)
+            elif melody_id == 4: # Image Mode Reset (Shutter-ish)
+                winsound.Beep(1200, 50)
+                winsound.Beep(500, 150)
         except Exception as e:
             print(f"[ERROR] Sound Error: {e}")
     else:
          print(f"[WARNING] winsound module not available.")
+
+@eel.expose
+def py_trigger_sound(sound_id=1):
+    """Triggers a sound on the robot (if connected) or PC"""
+    print(f"Triggering Sound ID: {sound_id}")
+    if SETTINGS['ser_started']:
+        try:
+            # Use melody command from binary protocol
+            pkt = bp.encode_melody_command(int(sound_id))
+            scm.write_data(pkt)
+            return True
+        except Exception as e:
+            print(f"Sound Trigger Error: {e}")
+            return False
+            
+    # Fallback to PC beep if robot not connected (optional given user preference)
+    # But user specifically asked "fai suonare il robot". 
+    # If not connected, we can't make the robot sound. 
+    return False
 
 # --- EEL EXPOSED FUNCTIONS ---
 
@@ -831,9 +859,39 @@ def py_delete_template(filename):
         return {'success': False, 'message': str(e)}
 
 @eel.expose
+def py_optimize_trajectory(patches, tolerance=0.001):
+    try:
+        print(f"Optimizing {len(patches)} patches with tolerance {tolerance}...")
+        # Ensure tolerance is float
+        tolerance = float(tolerance)
+        min_tol = 0.0001
+        if tolerance < min_tol: tolerance = min_tol
+        
+        optimized = image_processor.optimize_patches(patches, tolerance)
+        
+        # Count total points for debug
+        orig_pts = sum(len(p['points']) for p in patches)
+        opt_pts = sum(len(p['points']) for p in optimized)
+        
+        print(f"Optimization complete. Points reduced from {orig_pts} to {opt_pts}.")
+        return optimized
+    except Exception as e:
+        print(f"Optimization Error: {e}")
+        import traceback
+        traceback.print_exc()
+        return patches # Return original on error
+
+@eel.expose
 def py_process_image(file_data, options):
     try:
-        print(f"Processing Image Request: {options.get('width')}m width, mode={options.get('mode')}")
+        # Increment Generation to invalidate old processes
+        state.process_generation += 1
+        current_gen = state.process_generation
+        
+        # Reset Stop Flag
+        state.STOP_PROCESSING = False
+        
+        print(f"Processing Image Request (Gen {current_gen}): {options.get('width')}m width, mode={options.get('mode')}")
         
         # Define Logger Callback that streams to Frontend
         def frontend_logger(msg):
@@ -846,6 +904,14 @@ def py_process_image(file_data, options):
 
         # Inject logger into options
         options['logger'] = frontend_logger
+        
+        # Define check_stop callback with generation check
+        def check_stop():
+            if state.STOP_PROCESSING: return True
+            if state.process_generation > current_gen: return True
+            return False
+        
+        options['check_stop'] = check_stop
         
         # Rotation is handled smartly in image_processor.py
         

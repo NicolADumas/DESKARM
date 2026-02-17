@@ -50,12 +50,20 @@ def process_image(file_data_base64, options):
         if mode == 'svg':
             raw_paths = _process_svg(decoded_data)
         elif mode == 'vector_bw' or True: # Default to new Vector BW engine for now
+            # Check stop before heavy operation
+            if options.get('check_stop') and options['check_stop']():
+                log("[DEBUG] Processing Aborted by User.")
+                return []
             raw_paths = _process_vector_bw(decoded_data, options, log)
         else:
             raw_paths = _process_raster(decoded_data, options)
             
         t_proc = time.time()
         log(f"[DEBUG] Processing complete in {t_proc - t_start:.4f}s. Found {len(raw_paths)} raw paths.")
+            
+        if options.get('check_stop') and options['check_stop']():
+            log("[DEBUG] Processing Aborted by User.")
+            return []
             
         if not raw_paths:
             log("[DEBUG] No paths found.")
@@ -97,6 +105,8 @@ def process_image(file_data_base64, options):
         # Default Scales (Uniform)
         scale_x = 1.0
         scale_y = 1.0
+
+
         
         if is_landscape:
             # Landscape: Image Width -> Robot Lateral (Y)
@@ -240,6 +250,7 @@ def _process_raster(image_data, options):
             # HIGH PRECISION: Reduced epsilon from 0.003 to 0.0005
             epsilon = 0.0005 * length 
             approx = cv2.approxPolyDP(cnt, epsilon, True)
+
             
             # Convert to list of (x,y)
             pts = [ (float(p[0][0]), float(p[0][1])) for p in approx ]
@@ -378,7 +389,9 @@ def _process_vector_bw(image_data, options, log=print):
         img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         
         if img is None: return []
-            
+        
+        if options.get('check_stop') and options['check_stop'](): return None
+
         # Optimization: Resize for detail (High Res)
         max_dim = 2000
         h, w = img.shape
@@ -387,6 +400,8 @@ def _process_vector_bw(image_data, options, log=print):
             new_w = int(w * scale)
             new_h = int(h * scale)
             img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+        if options.get('check_stop') and options['check_stop'](): return None
 
         # 2. Determine Style
         style = options.get('style', 'auto')
@@ -407,6 +422,8 @@ def _process_vector_bw(image_data, options, log=print):
             type_ = cv2.THRESH_BINARY if inverted else cv2.THRESH_BINARY_INV
             _, binary = cv2.threshold(img, thresh_val, 255, type_)
 
+        if options.get('check_stop') and options['check_stop'](): return None
+
         # Morphological Cleanup
         if options.get('noise_reduction', False):
             log("Applying Noise Reduction...")
@@ -415,6 +432,7 @@ def _process_vector_bw(image_data, options, log=print):
 
         # 2b. Auto-Detect if needed
         if style == 'auto':
+            if options.get('check_stop') and options['check_stop'](): return None
             style = analyze_complexity(binary, log)
             log(f"Auto-Detected Style: {style.upper()}")
         
@@ -422,6 +440,7 @@ def _process_vector_bw(image_data, options, log=print):
         if style == 'skeleton':
             log("Generating Complex Image Skeleton...")
             # Thin pixel-thick lines
+            if options.get('check_stop') and options['check_stop'](): return None
             skel = _skeletonize(binary)
             # Prune small noise branches
             final_binary = _prune_skeleton(skel, min_branch_length=10)
@@ -437,6 +456,8 @@ def _process_vector_bw(image_data, options, log=print):
             retr_mode = cv2.RETR_TREE
             approx_level = 0.002 # Smoother
             min_len = 15
+
+        if options.get('check_stop') and options['check_stop'](): return None
 
         # Step 2: Full Contour Extraction
         contours, hierarchy = cv2.findContours(final_binary, retr_mode, cv2.CHAIN_APPROX_SIMPLE)
@@ -548,3 +569,36 @@ def _sort_paths(paths):
         current_pos = next_path[-1]
         
     return sorted_paths
+
+def optimize_patches(patches, tolerance=1.0):
+    """
+    Optimizes a list of patches (lines/polylines) using RDP algorithm.
+    tolerance: Epsilon for approxPolyDP (in suitable units, presumably same as data)
+    """
+    import numpy as np
+    
+    optimized_patches = []
+    
+    for patch in patches:
+        pts = patch['points']
+        if not pts or len(pts) < 3:
+            optimized_patches.append(patch)
+            continue
+            
+        # Convert to numpy for cv2
+        np_pts = np.array(pts, dtype=np.float32).reshape((-1, 1, 2))
+        
+        # Optimize
+        # Tolerance is epsilon. If data is in meters (0.2), tolerance should be small (e.g. 0.001)
+        approx = cv2.approxPolyDP(np_pts, tolerance, False) # False = open curve
+        
+        # Convert back
+        new_pts = approx.reshape(-1, 2).tolist()
+        
+        optimized_patches.append({
+            'type': 'polyline',
+            'points': new_pts,
+            'data': patch.get('data', {})
+        })
+        
+    return optimized_patches

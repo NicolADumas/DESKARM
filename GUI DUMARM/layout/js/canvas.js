@@ -170,6 +170,12 @@ export class CanvasHandler {
         // Strict Mode Check
         if (this.state.appMode !== 'drawing') return;
 
+        // ERASE MODE LOGIC
+        if (this.state.eraseMode) {
+            this.handleEraseClick(x, y);
+            return;
+        }
+
         if (this.state.points.length === 0 && this.state.sentPoints.length > 0) {
             this.state.sentPoints = [];
             this.state.sentTrajectory.reset();
@@ -256,9 +262,12 @@ export class CanvasHandler {
             const startAngle = Math.atan2(start.relY - cy, start.relX - cx);
             const endAngle = Math.atan2(end.relY - cy, end.relX - cx);
 
+            // Generate Group ID for Semicircle
+            const groupId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
             this.state.trajectory.add_circle(
                 center, radius, startAngle, endAngle,
-                this.state.penUp, start, end
+                this.state.penUp, start, end, groupId
             );
 
             this.state.points.push(end);
@@ -294,6 +303,9 @@ export class CanvasHandler {
                 const radius = Math.sqrt(dx * dx + dy * dy);
                 const rotation = Math.atan2(dy, dx);
 
+                // Generate Group ID
+                const groupId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
                 if (currentTool === TOOLS.CIRCLE) {
                     const startAngle = rotation;
                     const endAngle = rotation + 2 * Math.PI;
@@ -305,17 +317,18 @@ export class CanvasHandler {
                     );
 
                     // Move Center -> StartP (Pen Up)
-                    this.state.trajectory.add_line(center, startP, true);
+                    this.state.trajectory.add_line(center, startP, true, groupId);
 
                     this.state.trajectory.add_circle(
                         center, radius, startAngle, endAngle,
-                        this.state.penUp, startP, startP
+                        this.state.penUp, startP, startP, groupId
                     );
 
                     this.state.points.push(startP);
 
                 } else {
                     let shapePoints = [];
+                    // Group ID is already generated above
 
                     if (currentTool === TOOLS.STAR) {
                         // Default 5 points, inner radius 0.4
@@ -342,18 +355,18 @@ export class CanvasHandler {
                     }
 
                     // Move Center -> Vertex 0
-                    this.state.trajectory.add_line(center, shapePoints[0], true);
+                    this.state.trajectory.add_line(center, shapePoints[0], true, groupId);
 
                     for (let i = 0; i < shapePoints.length - 1; i++) {
                         const p_start = shapePoints[i];
                         const p_end = shapePoints[i + 1];
-                        this.state.trajectory.add_line(p_start, p_end, this.state.penUp);
+                        this.state.trajectory.add_line(p_start, p_end, this.state.penUp, groupId);
                     }
                     // Close the shape only if NOT a spiral
                     if (currentTool !== TOOLS.SPIRAL && shapePoints.length > 1) {
                         const p_start = shapePoints[shapePoints.length - 1];
                         const p_end = shapePoints[0];
-                        this.state.trajectory.add_line(p_start, p_end, this.state.penUp);
+                        this.state.trajectory.add_line(p_start, p_end, this.state.penUp, groupId);
                     }
 
                     this.state.points.push(shapePoints[0]);
@@ -776,7 +789,7 @@ export class CanvasHandler {
         ctx.strokeStyle = '#00bbff'; // Cyan/Blue
 
         for (let patch of this.state.imagePreviewPatches) {
-            // patches are {type: 'line', points: [[x,y], ...]}
+            // patches are {type: 'line'|'polyline', points: [[x,y], ...]}
             if (!patch.points || patch.points.length < 2) continue;
 
             ctx.beginPath();
@@ -984,4 +997,131 @@ export class CanvasHandler {
         }
     }
 
+    handleEraseClick(x, y) {
+        if (!this.state.trajectory || !this.state.trajectory.data) return;
+
+        // x, y are relative coordinates (meters). 
+        // 5 pixels in meters:
+        const hitThreshold = 10 * this.state.settings.m_p; // 10 pixels tolerance converted to meters
+
+        const data = this.state.trajectory.data;
+        let diff = false;
+        const itemsToRemoveIndices = new Set();
+        let targetGroupId = null;
+
+        // 1. Identify what was hit
+        // Iterate backwards to find the top-most item hit
+        for (let i = data.length - 1; i >= 0; i--) {
+            const item = data[i];
+            let hit = false;
+
+            if (item.type === 'line') {
+                const p0 = item.data[0];
+                const p1 = item.data[1];
+                hit = this.pointToLineDistance(x, y, p0.relX, p0.relY, p1.relX, p1.relY) < hitThreshold;
+            } else if (item.type === 'circle') {
+                const center = item.data[0];
+                const radius = item.data[1];
+                const dist = Math.sqrt(Math.pow(x - center.relX, 2) + Math.pow(y - center.relY, 2));
+                hit = Math.abs(dist - radius) < hitThreshold;
+            }
+
+            if (hit) {
+                targetGroupId = item.groupId;
+                // If it has a group ID, we want to remove ALL items with this ID.
+                // If no group ID, just this one.
+                itemsToRemoveIndices.add(i);
+
+                if (targetGroupId) {
+                    // Find all others with this groupId
+                    for (let j = 0; j < data.length; j++) {
+                        if (data[j].groupId === targetGroupId) {
+                            itemsToRemoveIndices.add(j);
+                        }
+                    }
+                }
+
+                diff = true;
+                break; // Found the target group/item, stop searching for hits
+            }
+        }
+
+        if (diff) {
+            // 2. Remove items from trajectory
+            // Remove in descending order to preserve indices
+            const indices = Array.from(itemsToRemoveIndices).sort((a, b) => b - a);
+            const pointsCandidateForRemoval = new Set();
+
+            indices.forEach(index => {
+                const item = data[index];
+                if (item.type === 'line') {
+                    pointsCandidateForRemoval.add(item.data[0]);
+                    pointsCandidateForRemoval.add(item.data[1]);
+                } else if (item.type === 'circle') {
+                    pointsCandidateForRemoval.add(item.data[0]);
+                    if (item.data[5]) pointsCandidateForRemoval.add(item.data[5]);
+                    if (item.data[6]) pointsCandidateForRemoval.add(item.data[6]);
+                }
+
+                // Remove the item
+                data.splice(index, 1);
+            });
+
+            // 3. Efficient cleanup of Orphans
+            // Build a Set of ALL points currently in use by the REMAINING trajectory
+            const usedPoints = new Set();
+            for (const item of data) {
+                if (item.type === 'line') {
+                    usedPoints.add(item.data[0]);
+                    usedPoints.add(item.data[1]);
+                } else if (item.type === 'circle') {
+                    usedPoints.add(item.data[0]);
+                    if (item.data[5]) usedPoints.add(item.data[5]);
+                    if (item.data[6]) usedPoints.add(item.data[6]);
+                }
+            }
+
+            // Remove candidate points ONLY if they are NOT in the usedPoints set
+            pointsCandidateForRemoval.forEach(p => {
+                if (!usedPoints.has(p)) {
+                    const idx = this.state.points.indexOf(p);
+                    if (idx !== -1) {
+                        this.state.points.splice(idx, 1);
+                    }
+                }
+            });
+
+            this.state.saveState(); // Save for Undo
+        }
+    }
+
+    pointToLineDistance(px, py, x1, y1, x2, y2) {
+        const A = px - x1;
+        const B = py - y1;
+        const C = x2 - x1;
+        const D = y2 - y1;
+
+        const dot = A * C + B * D;
+        const len_sq = C * C + D * D;
+        let param = -1;
+        if (len_sq !== 0) // in case of 0 length line
+            param = dot / len_sq;
+
+        let xx, yy;
+
+        if (param < 0) {
+            xx = x1;
+            yy = y1;
+        } else if (param > 1) {
+            xx = x2;
+            yy = y2;
+        } else {
+            xx = x1 + param * C;
+            yy = y1 + param * D;
+        }
+
+        const dx = px - xx;
+        const dy = py - yy;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
 }

@@ -59,6 +59,11 @@
                     <button id="redo-btn" class="btn sm" title="Redo (Ctrl+Y)">➡ Redo</button>
                     <button id="clear-btn" class="btn sm" title="Clear Drawing (Delete)">✖ Clear</button>
                 </div>
+
+                <button id="btn-global-reset" class="btn"
+                    style="width: 100%; margin-top: 5px; background-color: #666; color: white;">
+                    🔄 RESET MODE CACHE
+                </button>
             </div>
 
             <div id="section-drawing-tools" class="control-group">
@@ -68,6 +73,11 @@
                 <div style="display: flex; gap: 5px; margin-bottom: 15px;">
                     <button id="mode-continuous-btn" class="btn active" title="Chain shapes (United)">➕UNIFIED</button>
                     <button id="mode-discrete-btn" class="btn" title="Separate shapes (Discrete)">➗DIVIDED</button>
+                </div>
+
+                <!-- Erase Mode -->
+                <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+                    <button id="erase-mode-btn" class="btn" title="Click shapes to delete them">🗑️ ERASE</button>
                 </div>
 
                 <!-- Main Drawing Tools -->
@@ -161,6 +171,7 @@
                     ➕ AGGIUNGI TESTO
                 </button>
 
+
                 <div style="height: 10px;"></div>
             </div>
 
@@ -240,6 +251,12 @@
                     <input type="range" id="img-smoothing" value="2" min="0" max="10" step="1" style="flex-grow: 1;">
                     <span id="val-smoothing" style="width: 30px; text-align: right;">2</span>
                 </div>
+                <div class="input-row">
+                    <label style="min-width: 130px;">Dettaglio Traiettoria:</label>
+                    <input type="range" id="img-optimization" value="8" min="0" max="10" step="1" style="flex-grow: 1;"
+                        title="0 = Nessuna ottimizzazione (Tutti i punti), 10 = Massima semplificazione">
+                    <span id="val-optimization" style="width: 30px; text-align: right;">8</span>
+                </div>
                 <div class="input-row" style="justify-content: space-between;">
                     <label style="display: flex; align-items: center; gap: 5px;">
                         <input type="checkbox" id="img-invert"> Invert
@@ -289,6 +306,7 @@
                     style="width: 100%; background-color: var(--success-color); color:black; font-weight: bold;">
                     ✅ CONFIRM
                 </button>
+
                 <div id="image-status-msg" class="status-msg hidden"
                     style="text-align: center; margin-top: 5px; color: var(--success-color); font-weight: bold; font-size: 0.9em;">
                 </div>
