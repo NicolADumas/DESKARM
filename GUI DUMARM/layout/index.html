@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Planar Arm Control</title>
+    <title>DeskArm Control</title>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -31,7 +31,7 @@
                         d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
                     </path>
                 </svg>
-                RoboControl
+                DeskArm
             </div>
 
             <div class="control-group">
@@ -257,64 +257,82 @@
                         title="0 = Nessuna ottimizzazione (Tutti i punti), 10 = Massima semplificazione">
                     <span id="val-optimization" style="width: 30px; text-align: right;">8</span>
                 </div>
-                <div class="input-row" style="justify-content: space-between;">
-                    <label style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="img-invert"> Invert
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="img-show-original" checked> Overlay
-                    </label>
-                    <label style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="img-noise-reduction"> Denoise
-                    </label>
-                </div>
 
-                <div id="image-loading" class="hidden"
-                    style="text-align: center; margin: 5px; color: var(--accent-color);">
-                    ⏳ Processing...
-                </div>
-
-                <div id="image-debug-log" class="hidden"
-                    style="font-size: 0.8em; color: #aaa; height: 30px; line-height: 20px; overflow: hidden; background: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px; white-space: nowrap; border-radius: 4px;">
-                </div>
-
-                <div class="input-row" style="margin-bottom: 5px; flex-direction: column; align-items: flex-start;">
-                    <label style="font-size: 0.8em; margin-bottom: 2px;">Style:</label>
-                    <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; padding-left: 10px;">
-                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                            <input type="radio" name="img-style" value="auto" checked> Auto
+                <!-- Separated True Processing Filters from UI Options -->
+                <div class="input-row" style="flex-direction: column; align-items: flex-start; margin-bottom: 5px;">
+                    <span style="font-size: 0.85em; color: #888; font-weight: bold; margin-bottom: 4px;">Filtri
+                        Elaborazione:</span>
+                    <div style="display: flex; flex-direction: column; gap: 4px; padding-left: 10px;">
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.9em;"
+                            title="Inverte il bianco e nero prima di estrarre le linee">
+                            <input type="checkbox" id="img-invert"> Invert
                         </label>
-                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                            <input type="radio" name="img-style" value="skeleton"> Complex Image
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 0.9em;"
+                            title="Riduce le imperfezioni e i puntini sporchi sulla foto">
+                            <input type="checkbox" id="img-noise-reduction"> Denoise
                         </label>
-                        <label style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                            <input type="radio" name="img-style" value="outline"> Simple Image
+                    </div>
+
+                    <!-- Visual UI Effect Only -->
+                    <div class="input-row" style="justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-size: 0.85em; color: #888; font-weight: bold;">Vista Grafica:</span>
+                        <label
+                            style="display: flex; align-items: center; gap: 5px; font-size: 0.9em; margin-right: 5px;"
+                            title="Mostra l'immagine originale in trasparenza sul Canvas">
+                            <input type="checkbox" id="img-show-original" checked> Overlay Foto Originale
                         </label>
+                    </div>
+
+                    <div id="image-loading" class="hidden"
+                        style="text-align: center; margin: 5px; color: var(--accent-color);">
+                        ⏳ Processing...
+                    </div>
+
+                    <div id="image-debug-log" class="hidden"
+                        style="font-size: 0.8em; color: #aaa; height: 30px; line-height: 20px; overflow: hidden; background: rgba(0,0,0,0.5); padding: 5px; margin-bottom: 5px; white-space: nowrap; border-radius: 4px;">
+                    </div>
+
+                    <div class="input-row" style="margin-bottom: 5px; flex-direction: column; align-items: flex-start;">
+                        <label style="font-size: 0.8em; margin-bottom: 2px; font-weight: bold; color: #888;">Stile
+                            (Motore
+                            Matematico):</label>
+                        <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; padding-left: 10px;">
+                            <label
+                                style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;"
+                                title="Sceglie da solo se usare Skeleton o Outline">
+                                <input type="radio" name="img-style" value="auto" checked> [AUTO] Rilevamento
+                                Intelligente
+                            </label>
+                            <label
+                                style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;"
+                                title="Stringe i tratti al centro (1-Pixel) - Ideale per ritratti, schizzi e disegni naturali">
+                                <input type="radio" name="img-style" value="skeleton"> Skeleton Engine (Complex/Schizzi)
+                            </label>
+                            <label
+                                style="font-size: 0.8em; display: flex; align-items: center; gap: 5px; cursor: pointer;"
+                                title="Segue fedelmente bordo interno/esterno - Ideale per clipart, cuori o loghi nitidi">
+                                <input type="radio" name="img-style" value="outline"> Outline Engine (Simple/Loghi)
+                            </label>
+                        </div>
+                    </div>
 
 
+
+
+                    <button id="btn-process-image" class="btn primary" style="width: 100%; margin-bottom: 5px;">
+
+                        ⚙ PROCESS
+                    </button>
+                    <button id="btn-confirm-image" class="btn"
+                        style="width: 100%; background-color: var(--success-color); color:black; font-weight: bold;">
+                        ✅ CONFIRM
+                    </button>
+
+                    <div id="image-status-msg" class="status-msg hidden"
+                        style="text-align: center; margin-top: 5px; color: var(--success-color); font-weight: bold; font-size: 0.9em;">
                     </div>
                 </div>
-
-
-
-
-                <button id="btn-process-image" class="btn primary" style="width: 100%; margin-bottom: 5px;">
-
-                    ⚙ PROCESS
-                </button>
-                <button id="btn-confirm-image" class="btn"
-                    style="width: 100%; background-color: var(--success-color); color:black; font-weight: bold;">
-                    ✅ CONFIRM
-                </button>
-
-                <div id="image-status-msg" class="status-msg hidden"
-                    style="text-align: center; margin-top: 5px; color: var(--success-color); font-weight: bold; font-size: 0.9em;">
-                </div>
-            </div>
-
-
-
-
+            </div> <!-- CLOSE SECTION-IMAGE-TOOLS -->
 
             <div class="control-group">
                 <div class="group-title">Trajectory Control</div>
@@ -420,7 +438,7 @@
 
         <!-- Right Sidebar Toggle Button -->
         <button id="right-sidebar-toggle-btn" class="floating-toggle-btn" title="Open Menu">
-            ☰
+            ☰ CUSTOMIZATION
         </button>
 
 
