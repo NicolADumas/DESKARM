@@ -1,6 +1,8 @@
 import { appState, TOOLS } from './state.js';
 import { CanvasHandler } from './canvas.js';
 import { Point, abs2rel } from './utils.js';
+import { simplifyPath } from './utils_drawing.js';
+import { TrajectoryOptimizer } from './trajectory_optimizer.js';
 import { API } from './api.js';
 import { ThemeManager } from './theme.js';
 
@@ -55,6 +57,7 @@ function initUI() {
         btnStop: document.getElementById('stop-trajectory-btn'),
         btnHoming: document.getElementById('homing-btn'),
         btnCleanState: document.getElementById('clean-state-btn'),
+        btnPlotToggle: document.getElementById('plot-toggle-btn'),
 
         // Text Tools
         btnPresetLetter: document.getElementById('btn-preset-letter'),
@@ -318,8 +321,16 @@ function setupEventListeners() {
         API.homing();
     });
 
-    ui.btnSend.addEventListener('click', () => {
-        API.sendData();
+    ui.btnSend.addEventListener('click', async () => {
+        await API.sendData();
+        // If PLOT toggle is ON, save trajectory analysis after generating
+        if (ui.btnPlotToggle && ui.btnPlotToggle.classList.contains('active')) {
+            const modeName = state.appMode || 'unknown';
+            console.log(`[PLOT] Saving plots for mode: ${modeName}...`);
+            const ok = await API.savePlots(modeName);
+            if (ok) console.log('[PLOT] Trajectory analysis saved to images/');
+            else console.warn('[PLOT] Plot saving failed or no data available.');
+        }
     });
 
     ui.btnCleanState.addEventListener('click', () => {
@@ -360,6 +371,14 @@ function setupEventListeners() {
         console.log("Stopping trajectory...");
         await API.stopTrajectory();
     });
+
+    // Plot Toggle
+    if (ui.btnPlotToggle) {
+        ui.btnPlotToggle.addEventListener('click', () => {
+            const isOn = ui.btnPlotToggle.classList.toggle('active');
+            ui.btnPlotToggle.textContent = isOn ? '📊 PLOT: ON' : '📊 PLOT: OFF';
+        });
+    }
 
     // --- Mode Selection ---
     if (ui.btnAppModeDrawing && ui.btnAppModeText) {
@@ -733,8 +752,35 @@ async function addTextToTrajectory() {
     try {
         const patches = await API.generateText(text, options);
         if (patches && patches.length > 0) {
-            // Accumulate patches instead of replacing
-            state.accumulatedTextPatches.push(...patches);
+            // Apply Douglas-Peucker Simplification to text patches
+            // Text is small, so we can use a small tolerance like 0.0005m = 0.5mm
+            // (converted to pixels internally by simplifyPath if needed, but text patches may already be in meters or pixels depending on backend).
+            // Actually, API.generateText returns patches with points in meters.
+            // simplifyPath works on Point objects (pixels). Let's convert if necessary.
+
+            // Assume default tolerance for text, or fetch from UI if exists. Let's hardcode a small optimization.
+            const textToleranceMeters = 0.0002; // 0.2mm
+            const tolerancePixels = textToleranceMeters / state.settings.m_p;
+
+            const optimizedPatches = patches.map(patch => {
+                if (patch.type !== 'line' && patch.type !== 'polyline') return patch;
+
+                const abstractPts = patch.points.map(p => {
+                    // points are [x,y] in meters from Backend
+                    const [relX, relY] = abs2rel(p[0], p[1], state.settings);
+                    return new Point(relX, relY, state.settings);
+                });
+
+                const simplifiedAbstractPts = simplifyPath(abstractPts, tolerancePixels);
+
+                return {
+                    ...patch,
+                    points: simplifiedAbstractPts.map(p => [p.actX, p.actY])
+                };
+            });
+
+            // Accumulate optimized patches instead of replacing
+            state.accumulatedTextPatches.push(...optimizedPatches);
             state.generatedTextPatches = [...state.accumulatedTextPatches];
 
             // Clear only the text input, keep position/angle for user to modify
@@ -1047,6 +1093,8 @@ function getTrajectoryPayload() {
 
     const payload = [];
 
+    let startPointForOptimizer = { x: 0, y: 0 };
+
     // --- HOMING PATH: Add path from current robot position to origin (0,0) ---
     // This prevents the robot from "teleporting" when a new trajectory is started
     if (state.manipulator) {
@@ -1055,14 +1103,16 @@ function getTrajectoryPayload() {
 
         // Only proceed if we have valid joint angles (not null, undefined, or NaN)
         if (Number.isFinite(currentQ0) && Number.isFinite(currentQ1)) {
+            // Calculate current position in world coordinates for optimizer
+            const L1 = state.settings.l1 || 0.17;
+            const L2 = state.settings.l2 || 0.17;
+            const currentX = L1 * Math.cos(currentQ0) + L2 * Math.cos(currentQ0 + currentQ1);
+            const currentY = L1 * Math.sin(currentQ0) + L2 * Math.sin(currentQ0 + currentQ1);
+
+            startPointForOptimizer = { x: currentX, y: currentY };
+
             // Only add homing path if robot is not already at origin
             if (Math.abs(currentQ0) > 0.01 || Math.abs(currentQ1) > 0.01) {
-                // Calculate current position in world coordinates
-                const L1 = state.settings.l1 || 0.17;
-                const L2 = state.settings.l2 || 0.17;
-                const currentX = L1 * Math.cos(currentQ0) + L2 * Math.cos(currentQ0 + currentQ1);
-                const currentY = L1 * Math.sin(currentQ0) + L2 * Math.sin(currentQ0 + currentQ1);
-
                 // Home position (q0=0, q1=0) = (L1+L2, 0)
                 const homeX = L1 + L2;
                 const homeY = 0;
@@ -1076,6 +1126,9 @@ function getTrajectoryPayload() {
                         'points': [[currentX, currentY], [homeX, homeY]],
                         'data': { 'penup': true }
                     });
+
+                    // After homing, the robot is at home position, so we must start drawing from there
+                    startPointForOptimizer = { x: homeX, y: homeY };
 
                     console.log(`Homing path added: (${currentX.toFixed(3)}, ${currentY.toFixed(3)}) -> (${homeX.toFixed(3)}, ${homeY.toFixed(3)})`);
                 }
@@ -1107,7 +1160,7 @@ function getTrajectoryPayload() {
 
                 item = {
                     'type': 'line',
-                    'points': [[p0.actX, p0.actY], [p1.actX, p1.actY]],
+                    'points': simplifyPath([p0, p1].map(p => new Point(p.relX, p.relY, state.settings))).map(p => [p.actX, p.actY]),
                     'data': { 'penup': penup || false }
                 };
 
@@ -1172,11 +1225,25 @@ function getTrajectoryPayload() {
     }
 
     // Combine Drawings: Linear First, then Curved
-    const drawingPayload = [...linearPayload, ...curvedPayload];
+    const drawingPayloadRaw = [...linearPayload, ...curvedPayload];
+
+    // Optimize Drawing Path (FLSC + Nearest Neighbor)
+    const optimizer = new TrajectoryOptimizer(state.settings);
+
+    // If we have text already pushed, update startPointForOptimizer to end of last text path
+    if (payload.length > 0) {
+        const lastTextPatch = payload[payload.length - 1];
+        if (lastTextPatch && lastTextPatch.points && lastTextPatch.points.length > 0) {
+            const lastTextPt = lastTextPatch.points[lastTextPatch.points.length - 1];
+            startPointForOptimizer = { x: lastTextPt[0], y: lastTextPt[1] };
+        }
+    }
+
+    const drawingPayloadOptimized = optimizer.optimize(drawingPayloadRaw, startPointForOptimizer);
 
     // Merge Text and Drawings with Smart Jumps
     // We already have 'payload' containing Text.
-    // We need to append 'drawingPayload' but ensure Jumps between disjoint segments.
+    // We need to append 'drawingPayloadOptimized' but ensure Jumps between disjoint segments.
 
     // Helper to add jump if needed
     const safePush = (list, item) => {
@@ -1190,6 +1257,9 @@ function getTrajectoryPayload() {
             const dy = currStart[1] - lastEnd[1];
             const dist = Math.sqrt(dx * dx + dy * dy);
 
+            // Need to insert penup jump if distance isn't infinitesimal or if it's explicitly a penup
+            // Wait, optimized drawing already inserts penup between line->curved groups!
+            // But we must NOT inject arbitrary penups in the middle of a continuous text or complex shape.
             if (dist > 0.001) {
                 // Insert Jump
                 list.push({
@@ -1202,16 +1272,23 @@ function getTrajectoryPayload() {
         list.push(item);
     };
 
-    // Apply Smart Jumps to the sorted drawing list
-    // (Note: The user re-ordering might break continuity, so we MUST insert jumps)
+    // Apply Smart Jumps to the optimized drawing list
     const finalDrawing = [];
-    for (let item of drawingPayload) {
+    for (let item of drawingPayloadOptimized) {
+        // Only safePush if item is a line segment that is missing a jump.
+        // Wait, optimizer creates jumps from Linear to Curved, but inside groups we might need jumps too.
+        // Let's rely on safePush to do it.
         safePush(finalDrawing, item);
     }
 
     // Now append to main payload (which has text)
+    // Actually safePush for appending drawing to payload
     for (let item of finalDrawing) {
-        safePush(payload, item);
+        if (payload.length === 0) {
+            payload.push(item);
+        } else {
+            safePush(payload, item);
+        }
     }
 
     return payload;
@@ -1913,10 +1990,30 @@ async function confirmImage() {
             state.points.push(p0);
         }
 
-        for (let i = 0; i < pts.length - 1; i++) {
+        let simplifiedPts = pts;
+
+        // Simplify if tolerance is set
+        if (tolerance > 0) {
+            // map point arrays to Point objects for simplifyPath
+            const abstractPts = pts.map(p => {
+                const [relX, relY] = abs2rel(p[0], p[1], state.settings);
+                return new Point(relX, relY, state.settings);
+            });
+
+            // Note: tolerance here is in meters (received from optLevel).
+            // simplifyPath expects pixels. So we convert tolerance to pixels.
+            const tolerancePixels = tolerance / state.settings.m_p;
+
+            const simplifiedAbstractPts = simplifyPath(abstractPts, tolerancePixels);
+
+            // map back to physical coordinate arrays
+            simplifiedPts = simplifiedAbstractPts.map(p => [p.actX, p.actY]);
+        }
+
+        for (let i = 0; i < simplifiedPts.length - 1; i++) {
             // Convert Meters (pts) to Pixels (abs2rel) because Point() expects Pixels
-            const [p1x, p1y] = abs2rel(pts[i][0], pts[i][1], state.settings);
-            const [p2x, p2y] = abs2rel(pts[i + 1][0], pts[i + 1][1], state.settings);
+            const [p1x, p1y] = abs2rel(simplifiedPts[i][0], simplifiedPts[i][1], state.settings);
+            const [p2x, p2y] = abs2rel(simplifiedPts[i + 1][0], simplifiedPts[i + 1][1], state.settings);
 
             const p1 = new Point(p1x, p1y, state.settings);
             const p2 = new Point(p2x, p2y, state.settings);

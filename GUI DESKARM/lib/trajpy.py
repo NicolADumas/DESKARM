@@ -626,12 +626,14 @@ class Point:
 - float distance: total distance to travel (magnitude)
 - float max_acc: maximum allowed acceleration constraint
 - float max_vel: maximum allowed velocity constraint
+- float v0: initial scalar velocity along the path
+- float v1: final scalar velocity along the path
 @outputs:
 - tuple[callable, float]: (s_func, tf) where s_func(t) returns normalized position [0,1]
 @# """
-def get_profile_law(profile: str, distance: float, max_acc: float, max_vel: float) -> tuple[Callable[[float], float], float]:
+def get_profile_law(profile: str, distance: float, max_acc: float, max_vel: float, v0: float = 0.0, v1: float = 0.0) -> tuple[Callable[[float], float], float]:
     dist = abs(distance)
-    if dist < 1e-9:
+    if dist < 1e-5: # Increased threshold for degenerate patches
         return (lambda t: 1.0, 0.0)
 
     # 1. Calculate Duration (tf) based on constraints
@@ -697,74 +699,159 @@ def get_profile_law(profile: str, distance: float, max_acc: float, max_vel: floa
     
     if profile == 'trapezoidal':
         # Re-derive parameters for the specific instance
-        v_peak_triangle = sqrt(max_acc * dist)
+        # Simple implementation taking into account v0 and v1:
+        # Distance during acc: S_acc = (v_c^2 - v0^2)/(2*a)
+        # Distance during dec: S_dec = (v_c^2 - v1^2)/(2*a)
+        # S_coast = dist - S_acc - S_dec
         
-        # Determine actual tc (time of acceleration)
-        tc = 0.0
-        actual_acc = max_acc # We use max acc
+        # Iteration to find achievable v_c
+        v_c = max_vel
+        s_acc = (v_c**2 - v0**2)/(2*max_acc) if v_c > v0 else 0
+        s_dec = (v_c**2 - v1**2)/(2*max_acc) if v_c > v1 else 0
         
-        if v_peak_triangle <= max_vel:
-            # Triangle
-            tc = tf / 2
-            # Recalculate Acc to fit exactly? 
-            # tf = sqrt(4S/A) -> A = 4S/tf^2. 
-            # If we used max_acc to find tf, actual_acc is max_acc.
-            actual_acc = 4 * dist / (tf**2)
+        if s_acc + s_dec > dist:
+            # Triangular profile (Coast phase eliminated)
+            # v_c^2 - v0^2 + v_c^2 - v1^2 = 2*a*dist
+            # 2*v_c^2 = 2*a*dist + v0^2 + v1^2
+            # v_c = sqrt(a*dist + 0.5*v0^2 + 0.5*v1^2)
+            v_c = sqrt(max_acc*dist + 0.5*v0**2 + 0.5*v1**2)
+            tc_acc = (v_c - v0)/max_acc
+            tc_dec = (v_c - v1)/max_acc
+            tf = tc_acc + tc_dec
+            
+            # Constants for capture
+            _v0 = v0
+            _v1 = v1
+            _vc = v_c
+            _acc_up = max_acc
+            _acc_down = max_acc
+            _tc_acc = tc_acc
+            _tc_dec = tc_dec
+            _tf = tf
+            _dist = dist
+            
+            def s_trap(t):
+                 t = max(0.0, min(t, _tf)) # Clamp
+                 val = 0.0
+                 if t <= _tc_acc:
+                     val = _v0*t + 0.5*_acc_up*t**2
+                 else:
+                     t_dec = t - _tc_acc
+                     dist_acc = _v0*_tc_acc + 0.5*_acc_up*_tc_acc**2
+                     val = dist_acc + _vc*t_dec - 0.5*_acc_down*t_dec**2
+                 return val / _dist if _dist > 0 else 1.0
+                 
+            return (s_trap, tf)
+            
         else:
-            # Trapezoid
-            # tf = 2 * (V/A) + (S - V^2/A)/V = V/A + S/V
-            # We used max_vel and max_acc.
-            # tc = max_vel / max_acc
-            tc = max_vel / max_acc
-            actual_acc = max_acc
+            # Trapezoidal Profile (Coast phase)
+            tc_acc = (v_c - v0)/max_acc
+            tc_dec = (v_c - v1)/max_acc
+            s_coast = dist - s_acc - s_dec
+            t_coast = s_coast / v_c
+            tf = tc_acc + t_coast + tc_dec
+            
+            _v0 = v0
+            _v1 = v1
+            _vc = v_c
+            _acc_up = max_acc
+            _acc_down = max_acc
+            _tc_acc = tc_acc
+            _t_coast = t_coast
+            _tf = tf
+            _dist = dist
+            
+            def s_trap(t):
+                 t = max(0.0, min(t, _tf)) # Clamp
+                 val = 0.0
+                 if t <= _tc_acc:
+                     val = _v0*t + 0.5*_acc_up*t**2
+                 elif t <= _tc_acc + _t_coast:
+                     dist_acc = _v0*_tc_acc + 0.5*_acc_up*_tc_acc**2
+                     t_coast = t - _tc_acc
+                     val = dist_acc + _vc*t_coast
+                 else:
+                     t_dec = t - (_tc_acc + _t_coast)
+                     dist_acc = _v0*_tc_acc + 0.5*_acc_up*_tc_acc**2
+                     dist_coast = _vc*_t_coast
+                     start_dec_pos = dist_acc + dist_coast
+                     val = start_dec_pos + _vc*t_dec - 0.5*_acc_down*t_dec**2
+                 
+                 return val / _dist if _dist > 0 else 1.0
+                 
+            return (s_trap, tf)
 
-        # Constants for capture
-        _tc = tc
-        _tf = tf
-        _acc = actual_acc
-        _dist = dist
-        
-        # s(t) must return normalized [0, 1]. 
-        # So we calculate Position(t) and divide by Distance.
-        
-        def s_trap(t):
-             t = max(0.0, min(t, _tf)) # Clamp
-             val = 0.0
-             if t <= _tc:
-                 val = 0.5 * _acc * t**2
-             elif t <= _tf - _tc:
-                 val = 0.5 * _acc * _tc**2 + _acc * _tc * (t - _tc)
-             else:
-                 t_dec = t - (_tf - _tc)
-                 # Position at start of decel
-                 dist_coast = _acc * _tc * (_tf - 2*_tc)
-                 dist_acc = 0.5 * _acc * _tc**2
-                 start_dec_pos = dist_acc + dist_coast
-                 # Decel profile: v(t') = V - a*t', pos = V*t' - 0.5*a*t'^2
-                 v_const = _acc * _tc
-                 val = start_dec_pos + v_const * t_dec - 0.5 * _acc * t_dec**2
-             
-             return val / _dist if _dist > 0 else 1.0
-             
-        return (s_trap, tf)
+    # For polynomial blending we use quintic for boundary velocity support
+    elif profile == 'quintic' or profile in ['cubic', 'quartic', 's-curve', 'cycloidal']: 
+        # Convert all to quintic if blending is requested (v0>0 or v1>0)
+        if v0 > 0.001 or v1 > 0.001:
+            # To respect max_acc with boundary velocities we approximate tf:
+            # tf must be large enough to accelerate from v0 to max_vel (or vice-versa) AND cover distance
+            
+            # Simple kinematic constraint for minimum time:
+            # You can't reach dist from v0 to v1 without exceeding max_acc if tf is too small.
+            # tf >= |v1 - v0| / max_acc
+            # Also tf approx = distance / v_avg.
+            
+            v_avg = (v0 + v1) / 2.0
+            if v_avg < 0.001: v_avg = 0.001
+            
+            tf_kinematic = dist / v_avg
+            tf_acc_lim = abs(v1 - v0) / max_acc
+            tf_generic = max(dist/max_vel * 1.5, sqrt(6*dist/max_acc))
+            
+            tf = max(tf_kinematic, tf_acc_lim, tf_generic)
+            
+            # Boundary conditions (Normalized)
+            # v(0)=v0, v(tf)=v1
+            # Normalization scale factor for velocity is tf/dist
+            scale = tf / dist
+            _v0_norm = v0 * scale
+            _v1_norm = v1 * scale
+            
+            # Capping: If the normalized velocity is insanely high > 5.0, 
+            # it means v0*tf is much larger than the distance itself, causing the polynomial to loop backwards!
+            if _v0_norm > 2.5: 
+                # Reduce v0 or increase tf
+                _v0_norm = 2.5
+            if _v1_norm > 2.5:
+                _v1_norm = 2.5
 
-    # Normalized Polynomials s(tau) where tau = t/tf
-    elif profile == 's-curve' or profile == 'cycloidal':
-        # s(t) = t/tf - sin(2pi*t/tf)/(2pi)
-        return (lambda t: (t/tf - sin(2*pi*t/tf)/(2*pi)) if tf > 0 else 1.0, tf)
+            # Polynomial Coefficients for normalized s(tau) [tau \in 0..1]
+            # s(tau) = c0 + c1*tau + c2*tau^2 + c3*tau^3 + c4*tau^4 + c5*tau^5
+            # s(0) = 0     => c0 = 0
+            # s'(0) = v0n  => c1 = v0n
+            # s''(0) = 0   => 2*c2 = 0 => c2 = 0
+            # s(1) = 1     => c3 + c4 + c5 = 1 - c1
+            # s'(1) = v1n  => 3*c3 + 4*c4 + 5*c5 = v1n - c1
+            # s''(1) = 0   => 6*c3 + 12*c4 + 20*c5 = 0
+            
+            # Solving the linear system:
+            c1 = _v0_norm
+            c3 = 10 - 6*c1 - 4*_v1_norm
+            c4 = -15 + 8*c1 + 7*_v1_norm
+            c5 = 6 - 3*c1 - 3*_v1_norm
+            
+            def s_poly(t):
+                 if t <= 0: return 0.0
+                 if t >= tf: return 1.0
+                 tau = t / tf
+                 return c1*tau + c3*(tau**3) + c4*(tau**4) + c5*(tau**5)
+                 
+            return (s_poly, tf)
 
-    elif profile == 'cubic':
-        # 3tau^2 - 2tau^3
-        return (lambda t: ((t/tf)**2 * (3 - 2*(t/tf))) if tf > 0 else 1.0, tf)
-
-    elif profile == 'quartic':
-        # 4tau^3 - 3tau^4
-        return (lambda t: ((t/tf)**3 * (4 - 3*(t/tf))) if tf > 0 else 1.0, tf)
-
-    elif profile == 'quintic':
-        # 10tau^3 - 15tau^4 + 6tau^5
-        return (lambda t: ((t/tf)**3 * (10 - 15*(t/tf) + 6*(t/tf)**2)) if tf > 0 else 1.0, tf)
-    
+            
+        else:
+            # Standard definitions for zero-velocity boundaries
+            if profile == 's-curve' or profile == 'cycloidal':
+                return (lambda t: (t/tf - sin(2*pi*t/tf)/(2*pi)) if tf > 0 else 1.0, tf)
+            elif profile == 'cubic':
+                return (lambda t: ((t/tf)**2 * (3 - 2*(t/tf))) if tf > 0 else 1.0, tf)
+            elif profile == 'quartic':
+                return (lambda t: ((t/tf)**3 * (4 - 3*(t/tf))) if tf > 0 else 1.0, tf)
+            elif profile == 'quintic':
+                return (lambda t: ((t/tf)**3 * (10 - 15*(t/tf) + 6*(t/tf)**2)) if tf > 0 else 1.0, tf)
+            
     return (lambda t: t/tf if tf > 0 else 1.0, tf)
 """ #@
 @name: slice_trj
@@ -799,6 +886,10 @@ def slice_trj(patch: dict, **kargs):
         kargs['max_acc'] = 1.05
     if 'max_speed' not in kargs:
         kargs['max_speed'] = 5.0 # Default max speed if not specified
+    if 'v0' not in kargs:
+        kargs['v0'] = 0.0
+    if 'v1' not in kargs:
+        kargs['v1'] = 0.0
         
     profile_name = kargs.get('profile', 'trapezoidal')
     
@@ -847,18 +938,20 @@ def slice_trj(patch: dict, **kargs):
             total_len += d
         
         # Get timing law and duration
-        s_func, tf = get_profile_law(profile_name, total_len, kargs['max_acc'], kargs['max_speed'])
+        s_func, tf = get_profile_law(profile_name, total_len, kargs['max_acc'], kargs['max_speed'], kargs['v0'], kargs['v1'])
         
-        print(f"[DEBUG] Polyline Slicing: Pts={len(pts)}, Len={total_len:.4f}, Profile={profile_name} -> Tf={tf:.4f}")
+        print(f"[DEBUG] Polyline Slicing: Pts={len(pts)}, Len={total_len:.4f}, V0={kargs['v0']:.3f}, V1={kargs['v1']:.3f}, Profile={profile_name} -> Tf={tf:.4f}")
     else:
         # Primitive Logic
         length = l if patch['type'] == 'line' else abs(angle)*radius # LENGTH OF THE PATH
         
         # Get timing law and duration
-        s_func, tf = get_profile_law(profile_name, length, kargs['max_acc'], kargs['max_speed'])
+        s_func, tf = get_profile_law(profile_name, length, kargs['max_acc'], kargs['max_speed'], kargs['v0'], kargs['v1'])
 
-        print(f"[DEBUG] Primitive Slicing: Type={patch['type']}, Len={length:.4f}, Profile={profile_name} -> Tf={tf:.4f}")
+        print(f"[DEBUG] Primitive Slicing: Type={patch['type']}, Len={length:.4f}, V0={kargs['v0']:.3f}, V1={kargs['v1']:.3f}, Profile={profile_name} -> Tf={tf:.4f}")
 
+    # Scale Ts by 1.2 if it was extremely short to prevent divide by zero
+    if tf < 0.001: tf = 0.01
 
     points = [] # points (in operational space)
     if patch['data']['penup']:
@@ -988,15 +1081,18 @@ def slice_trj(patch: dict, **kargs):
 @#
 """
 def find_velocities(q: list[float], ts: list[float]) -> list[float]:
+    if not q or len(q) < 2: return [0.0] * len(q)
     dqs = []
-    k = 0 # debug
     for q0, q1, t0, t1 in zip(q[:-1], q[1:], ts[:-1], ts[1:]):
         dq = q1-q0
         dt = t1-t0
-        if dt == 0: pass # print(k, dq) # debug
-        dqs.append(dq/dt)
-        # k+=1 # debug
-    return [0]+dqs
+        if dt > 0:
+            dqs.append(dq/dt)
+        else:
+            dqs.append(0.0)
+    # Instead of forcing [0], copy the first calculated velocity 
+    # to avoid a massive step acceleration spike at t=0
+    return [dqs[0]] + dqs
 
 """
 #@
@@ -1010,9 +1106,14 @@ def find_velocities(q: list[float], ts: list[float]) -> list[float]:
 @#
 """
 def find_accelerations(dq: list[float], ts: list[float]) -> list[float]:
+    if not dq or len(dq) < 2: return [0.0] * len(dq)
     ddqs = []
     for dq0, dq1, t0, t1 in zip(dq[:-1], dq[1:], ts[:-1], ts[1:]):
         ddq = dq1-dq0
         dt = t1-t0
-        ddqs.append(ddq/dt)
-    return [0]+ddqs
+        if dt > 0:
+            ddqs.append(ddq/dt)
+        else:
+            ddqs.append(0.0)
+    # Copy the first calculated acceleration to t=0
+    return [ddqs[0]] + ddqs

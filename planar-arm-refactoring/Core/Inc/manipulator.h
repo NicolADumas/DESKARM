@@ -43,6 +43,7 @@ void manipulator_set_setpoints(manipulator_t *manipulator, float q0_setpoint_rad
 
 void clear_manipulator_buffers(manipulator_t *manipulator);
 void calibration_start(manipulator_t *manipulator);
+void calibration_stage2(manipulator_t *manipulator);
 void calibration_stop(manipulator_t *manipulator);
 uint8_t calibration_check(manipulator_t *manipulator);
 void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value);

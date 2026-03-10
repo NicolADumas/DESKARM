@@ -132,9 +132,24 @@ int main(void)
     // Send Telemetry
     manipulator_handle_telemetry(&manipulator, &huart2);
 
-    // If calibrating, skip the rest
+    // If calibrating, skip the rest and handle limits via polling
     if(calibration_check(&manipulator)){
-      continue;
+        if(manipulator.calibration_triggered == 1){
+            // Polling Limit Switch 1
+            if(HAL_GPIO_ReadPin(LIMIT_SWITCH_1_GPIO_Port, LIMIT_SWITCH_1_Pin) == GPIO_PIN_SET){
+                calibration_stage2(&manipulator);
+                tick = HAL_GetTick(); // Use tick as a debounce timer
+            }
+        } else if(manipulator.calibration_triggered == 2){
+            // Polling Limit Switch 2 (with 500ms debounce from stage 2 start)
+            if((HAL_GetTick() - tick) > 500){
+                if(HAL_GPIO_ReadPin(LIMIT_SWITCH_2_GPIO_Port, LIMIT_SWITCH_2_Pin) == GPIO_PIN_SET){
+                    calibration_encoder(&manipulator, &manipulator.encoder_2, CALIBRATION_2);
+                    calibration_stop(&manipulator);
+                }
+            }
+        }
+        continue;
     }
 
     // If not homed, perform homing
@@ -238,23 +253,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+    // Limit switch calibration logic is now polled in the main loop to avoid missing edges.
+    // We only keep the standalone stop logic when not calibrating.
     if(GPIO_Pin==LIMIT_SWITCH_1_Pin){
     	switch_count1+=1;
-        if(calibration_check(&manipulator)){
-          calibration_encoder(&manipulator, &manipulator.encoder_1, CALIBRATION_1);
-          apply_velocity_input(&manipulator, (float[2]){0.0, 0.5});
-        }else{
+        if(manipulator.calibration_triggered == 0){
           manipulator_set_motor_velocity(&manipulator, MOTOR_1, 0.0f);
         }
-        
     }
 
     if (GPIO_Pin==LIMIT_SWITCH_2_Pin){
     	switch_count2+=1;
-        if(calibration_check(&manipulator)){
-          calibration_encoder(&manipulator, &manipulator.encoder_2, CALIBRATION_2);
-          calibration_stop(&manipulator);
-        }else{
+        if(manipulator.calibration_triggered == 0){
           manipulator_set_motor_velocity(&manipulator, MOTOR_2, 0.0f);
         }
     }

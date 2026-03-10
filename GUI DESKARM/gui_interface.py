@@ -278,7 +278,7 @@ def py_get_data():
         data = merge_to_polylines(data)
         print(f"DEBUG: Optimized patches count: {len(data)}")
         
-        # Stitch patches
+        # Stitch patches with Look-Ahead Blending
         q0s = []
         q1s = []
         penups = []
@@ -287,7 +287,57 @@ def py_get_data():
         # PROPAGATION: Maintain current joint position as seed for next patch
         initial_q = state.last_known_q[:]
         
-        for patch in data: 
+        for i, patch in enumerate(data): 
+            # Look-Ahead Logic for Velocity Blending
+            v0 = 0.0
+            v1 = 0.0
+            
+            # Helper: calculate angle between two vectors
+            def check_collinear(p1_start, p1_end, p2_start, p2_end):
+                v1_vec = (p1_end[0] - p1_start[0], p1_end[1] - p1_start[1])
+                v2_vec = (p2_end[0] - p2_start[0], p2_end[1] - p2_start[1])
+                mag1 = (v1_vec[0]**2 + v1_vec[1]**2)**0.5
+                mag2 = (v2_vec[0]**2 + v2_vec[1]**2)**0.5
+                if mag1 < 0.001 or mag2 < 0.001: return False
+                dot = (v1_vec[0]*v2_vec[0] + v1_vec[1]*v2_vec[1]) / (mag1 * mag2)
+                return dot > 0.95 # ~18 degrees tolerance for blending
+            
+            # If not the first patch, and we didn't just pen-up, and previous wasn't a pen-up
+            if i > 0 and not patch['data'].get('penup', False) and not data[i-1]['data'].get('penup', False):
+                prev_patch = data[i-1]
+                if patch['type'] in ['line', 'polyline'] and prev_patch['type'] in ['line', 'polyline']:
+                    # Extract last vector of prev
+                    p1_s = prev_patch['points'][-2] if len(prev_patch['points']) > 1 else prev_patch['points'][0]
+                    p1_e = prev_patch['points'][-1]
+                    # Extract first vector of curr
+                    p2_s = patch['points'][0]
+                    p2_e = patch['points'][1] if len(patch['points']) > 1 else patch['points'][-1]
+                    
+                    if check_collinear(p1_s, p1_e, p2_s, p2_e):
+                        v0 = min(SETTINGS['max_speed'] * 0.4, SETTINGS['max_speed'])
+                
+            # If there's a next patch, and it doesn't jump, and we don't jump now
+            if i < len(data) - 1 and not data[i+1]['data'].get('penup', False) and not patch['data'].get('penup', False):
+                next_patch = data[i+1]
+                if patch['type'] in ['line', 'polyline'] and next_patch['type'] in ['line', 'polyline']:
+                    p1_s = patch['points'][-2] if len(patch['points']) > 1 else patch['points'][0]
+                    p1_e = patch['points'][-1]
+                    p2_s = next_patch['points'][0]
+                    p2_e = next_patch['points'][1] if len(next_patch['points']) > 1 else next_patch['points'][-1]
+                    
+                    if check_collinear(p1_s, p1_e, p2_s, p2_e):
+                        v1 = min(SETTINGS['max_speed'] * 0.4, SETTINGS['max_speed'])
+
+            # Override with Trapezoidal base for safety but blending is enabled
+            # Note: The custom profile generator handles quintic/trapezoidal blending
+            if v0 > 0 or v1 > 0:
+                print(f"Blending Patch {i}: v0={v0:.2f}, v1={v1:.2f}")
+
+            # Fallback safe velocities 
+            if patch['type'] == 'circle' or patch['data'].get('penup', False):
+                v0 = 0.0
+                v1 = 0.0
+
             (q0s_p, q1s_p, penups_p, ts_p) = tpy.slice_trj(
                 patch, 
                 Tc=SETTINGS['Tc'],
@@ -295,7 +345,9 @@ def py_get_data():
                 max_speed=SETTINGS['max_speed'],
                 profile=SETTINGS['motion_profile'],
                 sizes=SIZES,
-                initial_q=initial_q
+                initial_q=initial_q,
+                v0=v0,
+                v1=v1
             )
             # Update seed for next segment/patch
             if q0s_p:
@@ -375,6 +427,10 @@ def py_get_data():
         # This implies sending the command from Python after sending all points.
         
         state.stop_requested = False # Reset flag before start
+
+        # Store trajectory for optional post-run plotting
+        state.last_trajectory = {'q': q, 'dq': dq, 'ddq': ddq, 'ts': ts, 'mode': 'unknown'}
+
         serial_manager.send_data('trj', q=q, dq=dq, ddq=ddq)
         
         # Send Trajectory End Melody (ID 5)
@@ -407,6 +463,24 @@ def py_get_data():
     except Exception as e:
         print(f"Error in py_get_data: {e}")
         print(traceback.format_exc())
+
+@eel.expose
+def py_save_plots(mode_name="unknown"):
+    """Called from frontend when the PLOT toggle is ON after Generate Trajectory."""
+    try:
+        trj = state.last_trajectory
+        if trj['q'] is None:
+            print("[PLOT] No trajectory stored yet.")
+            return False
+        trj['mode'] = mode_name
+        plotting.plot_full_trajectory(
+            trj['q'], trj['dq'], trj['ddq'], trj['ts'], mode_name
+        )
+        return True
+    except Exception as e:
+        print(f"[PLOT] Error saving plots: {e}")
+        print(traceback.format_exc())
+        return False
 
 @eel.expose
 def py_stop_trajectory():

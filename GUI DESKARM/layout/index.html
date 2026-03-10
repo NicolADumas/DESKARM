@@ -337,14 +337,18 @@
             <div class="control-group">
                 <div class="group-title">Trajectory Control</div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                    <button id="send-trajectory-btn" class="btn primary" title="Generate & Send Trajectory">Generate
+                    <button id="send-trajectory-btn" class="btn primary" title="Generate &amp; Send Trajectory">Generate
                         Trajectory</button>
                     <button id="stop-trajectory-btn" class="btn" style="background-color: #ac3528; color: white;"
                         title="EMERGENCY STOP">STOP</button>
                     <button id="homing-btn" class="btn" title="Return to Home">Homing</button>
                     <button id="clean-state-btn" class="btn" title="Clean State">Clean</button>
-
                 </div>
+                <button id="plot-toggle-btn" class="btn sm"
+                    style="width: 100%; margin-top: 6px;"
+                    title="Salva grafici analisi traiettoria al termine della generazione">
+                    📊 PLOT: OFF
+                </button>
             </div>
 
             <div id="console-output" style="margin-top: auto; font-size: 0.8em; color: var(--text-muted);">

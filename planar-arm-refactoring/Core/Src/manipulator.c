@@ -120,7 +120,9 @@ void manipulator_read_status(manipulator_t *manipulator){
     encoder_read(&manipulator->encoder_2, &degs2, &dir2);
 
     degs1 = degs1; // wrap-around already handled by encoder
-    degs2 = -1*degs2; // Invert for convention
+    degs2 = -1*degs2; // Invert for kinematic convention (encoder counts opposite to joint convention)
+                       // IMPORTANT: due to this inversion AND dir_inverted=1 in controller.c,
+                       // calibration_stage2 must use +0.7f (not -0.7f) to move toward endstop 2.
 
     global_degs1 = degs1;
     global_degs2 = degs2;
@@ -163,25 +165,39 @@ void manipulator_read_status(manipulator_t *manipulator){
 
 // --- CALIBRATION AND HOMING ---
 void calibration_start(manipulator_t *manipulator){
-    manipulator->calibration_triggered = 1;
+    manipulator->calibration_triggered = 1; // State 1: Finding Limit Switch 1
     manipulator->homed = 0;
 
     homing_last_error0 = 0;
     homing_last_error1 = 0;
-    homing_counter = 0;
-    // Move slowly towards endstops
-    apply_velocity_input(manipulator, (float[2]){-0.5, 0.0});
+    // Move slowly towards endstops (-0.7 rad/s based on previous firmware)
+    apply_velocity_input(manipulator, (float[2]){-0.7f, 0.0f});
+}
+
+void calibration_stage2(manipulator_t *manipulator){
+    manipulator->calibration_triggered = 2; // State 2: Finding Limit Switch 2
+    calibration_encoder(manipulator, &manipulator->encoder_1, CALIBRATION_1);
+    // Move second joint towards endstop (+0.7 rad/s - positive because encoder 2 is inverted in manipulator_read_status)
+    apply_velocity_input(manipulator, (float[2]){0.0f, +0.7f});
 }
 
 void calibration_stop(manipulator_t *manipulator){
-    manipulator->calibration_triggered = 0;
+    manipulator->calibration_triggered = 0; // State 0: Done
     clear_manipulator_buffers(manipulator);
-    apply_velocity_input(manipulator, (float[2]){0, 0});
-    manipulator_set_setpoints(manipulator, 0.0f, 0.0f);
+    apply_velocity_input(manipulator, (float[2]){0.0f, 0.0f});
+    
+    // Read the exact position we just calibrated to
+    float current_q0, current_q1;
+    manipulator_read_status(manipulator); // Ensure buffers have at least one value
+    rbpeek(&manipulator->q0, &current_q0);
+    rbpeek(&manipulator->q1, &current_q1);
+
+    // Set setpoints to CURRENT position so PID doesn't jump
+    manipulator_set_setpoints(manipulator, current_q0, current_q1);
 }
 
 uint8_t calibration_check(manipulator_t *manipulator){
-    return manipulator->calibration_triggered;
+    return manipulator->calibration_triggered > 0;
 }
 
 void calibration_encoder(manipulator_t *manipulator, encoder_t *encoder, uint32_t calibration_value){
@@ -217,17 +233,29 @@ void homing(manipulator_t *manipulator){
     rbpeek(&manipulator->q0, &current_q0);
     rbpeek(&manipulator->q1, &current_q1);
 
+    // Incrementally move setpoints toward 0.0 to prevent jerking
+    float step = 0.01f; // rad per 10ms (approx 1 rad/s)
+    if (manipulator->q0_setpoint > step) manipulator->q0_setpoint -= step;
+    else if (manipulator->q0_setpoint < -step) manipulator->q0_setpoint += step;
+    else manipulator->q0_setpoint = 0.0f;
+
+    if (manipulator->q1_setpoint > step) manipulator->q1_setpoint -= step;
+    else if (manipulator->q1_setpoint < -step) manipulator->q1_setpoint += step;
+    else manipulator->q1_setpoint = 0.0f;
+
     float error_q0 = fabsf(manipulator->q0_setpoint - current_q0);
     float error_q1 = fabsf(manipulator->q1_setpoint - current_q1);
 
-    // Check error stability (when stable near 0, homing finished)
-    if(error_q0 - homing_last_error0 ==0 && error_q1 - homing_last_error1 ==0 && error_q0 < 0.2f && error_q1 < 0.2f){
+    // Check error stability (when reaching 0 and stable, homing finished)
+    if(manipulator->q0_setpoint == 0.0f && manipulator->q1_setpoint == 0.0f && fabsf(error_q0 - homing_last_error0) < 0.005f && fabsf(error_q1 - homing_last_error1) < 0.005f && error_q0 < 0.05f && error_q1 < 0.05f){
         homing_counter++;
+    } else {
+        homing_counter = 0; // Reset counter if it becomes unstable
     }
 
     homing_last_error0 = error_q0;
     homing_last_error1 = error_q1;
-    if(homing_counter >= 10){ // Stable for 100ms (10 cycles of 10ms)
+    if(homing_counter >= 50){ // Stable for 500ms (50 cycles of 10ms)
         manipulator->homed = 1;
         apply_velocity_input(manipulator, (float[2]){0.0, 0.0});
 

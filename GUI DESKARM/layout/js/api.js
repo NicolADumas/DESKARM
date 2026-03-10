@@ -71,6 +71,11 @@ export const API = {
         return await window.eel.py_stop_trajectory()();
     },
 
+    async savePlots(modeName) {
+        if (!window.eel) return false;
+        return await window.eel.py_save_plots(modeName)();
+    },
+
     async importDXF(base64Data) {
         if (!window.eel) return { success: false, message: "Eel not available" };
         return await window.eel.py_import_dxf(base64Data)();

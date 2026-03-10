@@ -395,21 +395,3 @@ def test_processing():
 
 ---
 
-## I. SVILUPPI FUTURI (AI & Deep Learning)
-
-### I.1 Integrazione Modelli Neurali (Python)
-**File:** `download_dexined.py`
-**Descrizione:** Predisposizione per Edge Detection neurale (DexiNed) via ONNX.
-
-```python
-def main():
-    # Download Automatico Modello ONNX (HuggingFace)
-    dexined_url = "https://huggingface.co/opencv/edge_detection_dexined/.../dexined.onnx"
-    dexined_path = os.path.join(models_dir, "dexined.onnx")
-    
-    if not os.path.exists(dexined_path):
-        print("Scaricamento DexiNed Model (Professional Grade)...")
-        # SSL Bypass per reti universitarie
-        ssl._create_default_https_context = ssl._create_unverified_context
-        # ... download logic ...
-```

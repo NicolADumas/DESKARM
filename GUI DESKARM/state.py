@@ -40,6 +40,11 @@ class RobotState:
     # Process Generation for Cancellation
     process_generation: int = 0
     STOP_PROCESSING: bool = False
+
+    # Last generated trajectory (for post-run plotting)
+    last_trajectory: Dict = field(default_factory=lambda: {
+        'q': None, 'dq': None, 'ddq': None, 'ts': None, 'mode': 'unknown'
+    })
     
     # Logging data
     log_data: Dict[str, List] = field(default_factory=lambda: {
